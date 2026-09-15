@@ -106,6 +106,6 @@ jobs:
             | Windows | `.msi` or `.exe` setup installer |
             | Linux | `.AppImage` (portable) or `.deb` (Debian/Ubuntu) |
 
-            > **Note:** HarborTorrent requires a PostgreSQL database connection. See the [README](https://github.com/${{ github.repository }}/blob/main/README.md#getting-started) for setup instructions.
+            > **Note:** HarborTorrent uses an embedded SQLite database. No database setup or server is required — just install and run!
           releaseDraft: true
           prerelease: false
