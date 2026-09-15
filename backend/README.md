@@ -1,6 +1,6 @@
 # HarborTorrent — Backend
 
-The .NET 10 REST API that powers the Harbor torrent management platform. Built with Clean Architecture and CQRS, it bridges the [MonoTorrent](https://github.com/alanmcgovern/monotorrent) download engine with a PostgreSQL database and exposes a typed HTTP API consumed by the [React frontend](../Harbor%20-%20Frontend/README.md).
+The .NET 10 REST API that powers the Harbor torrent management platform. Built with Clean Architecture and CQRS, it bridges the [MonoTorrent](https://github.com/alanmcgovern/monotorrent) download engine with an embedded SQLite database and exposes a typed HTTP API consumed by the [React frontend](../frontend/README.md).
 
 ---
 
@@ -10,7 +10,7 @@ The .NET 10 REST API that powers the Harbor torrent management platform. Built w
 |---|---|
 | .NET 10 / ASP.NET Core | Minimal API host |
 | Entity Framework Core 10 | ORM & schema migrations |
-| PostgreSQL (Neon) | Persistent data store |
+| SQLite (Embedded) | Persistent data store |
 | MediatR | CQRS command/query dispatch |
 | FluentValidation | Request validation pipeline |
 | MonoTorrent 3.x | Download engine runtime |
@@ -127,23 +127,15 @@ All responses are wrapped in a consistent envelope:
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- A PostgreSQL database (or a [Neon](https://neon.tech) serverless connection string)
+- No database setup required — SQLite runs embedded out of the box.
 
 ### Setup
 
 ```bash
-# 1. Clone and navigate to the backend
-cd "Harbor - Backend"
+# 1. Navigate to the backend
+cd backend
 
-# 2. Add your connection string
-# Edit HarborTorrent.Api/appsettings.Development.json:
-# {
-#   "ConnectionStrings": {
-#     "HarborTorrent": "Host=...;Database=...;Username=...;Password=...;SSL Mode=Require"
-#   }
-# }
-
-# 3. Run — EF Core migrations are applied automatically on startup
+# 2. Run — EF Core migrations are applied automatically on startup
 dotnet run --project HarborTorrent.Api
 ```
 
