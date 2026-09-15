@@ -4,6 +4,8 @@ A cross-platform desktop torrent management client for **Windows** and **Linux**
 
 HarborTorrent bundles the backend as a Tauri sidecar binary, so it ships as a single native desktop application — no separate server setup required.
 
+![HarborTorrent Demo](docs/assets/demo.webp)
+
 ---
 
 ## Tech Stack
@@ -43,7 +45,7 @@ flowchart LR
     A["Desktop App\n(Tauri)"] --> B["React UI\n(WebView)"]
     B <-->|"HTTP + SignalR\nreal-time updates"| C[".NET 10 API\n(runs locally)"]
     C <-->|"downloads pieces\nfrom peers"| D["BitTorrent\nNetwork"]
-    C <-->|"saves torrent\nstate & history"| E["PostgreSQL"]
+    C <-->|"saves torrent\nstate & history"| E["SQLite"]
 ```
 
 1. Tauri launches the `.NET` API binary as a **sidecar process** on startup.
@@ -69,14 +71,11 @@ flowchart LR
 cd frontend
 npm install
 
-# 2. Configure the backend connection string
-# Edit backend/HarborTorrent.Api/appsettings.Development.json
-
-# 3. Run the backend
+# 2. Run the backend
 cd ../backend
 dotnet run --project HarborTorrent.Api
 
-# 4. Run the frontend dev server (in a separate terminal)
+# 3. Run the frontend dev server (in a separate terminal)
 cd ../frontend
 npm run dev
 ```
