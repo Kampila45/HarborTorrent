@@ -17,6 +17,8 @@ jobs:
         include:
           - platform: ubuntu-22.04
             dotnet-rid: linux-x64
+          - platform: ubuntu-22.04-arm
+            dotnet-rid: linux-arm64
           - platform: windows-latest
             dotnet-rid: win-x64
 
