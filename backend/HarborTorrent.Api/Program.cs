@@ -35,21 +35,10 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        // Origins that need to reach this API:
-        //   - Vite dev server (npm run dev)
-        //   - Tauri WebView on Windows  → http://tauri.localhost
-        //   - Tauri WebView on Linux    → http://localhost:1420
-        // These are fixed for a local desktop app; hardcoded here
-        // rather than relying on appsettings.json (which is not bundled with the sidecar).
-        string[] allowedOrigins =
-        [
-            "http://localhost:5173",   // Vite dev server
-            "http://localhost:1420",   // Tauri WebView (Linux)
-            "http://tauri.localhost",  // Tauri WebView (Windows)
-            "tauri://localhost",       // Tauri WebView (older versions)
-        ];
-
-        policy.WithOrigins(allowedOrigins)
+        // Allow ANY origin because this is a local desktop app binding to loopback.
+        // On Linux WebViews (Fedora etc.), the origin might use dynamic ports
+        // (e.g. http://localhost:43219) instead of standard tauri://localhost.
+        policy.SetIsOriginAllowed(_ => true)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
