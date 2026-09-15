@@ -21,6 +21,8 @@ jobs:
             dotnet-rid: linux-arm64
           - platform: windows-latest
             dotnet-rid: win-x64
+          - platform: windows-11-arm
+            dotnet-rid: win-arm64
 
     runs-on: ${{ matrix.platform }}
 
