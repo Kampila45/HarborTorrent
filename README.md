@@ -40,18 +40,18 @@ HarborTorrent/
 
 ```mermaid
 flowchart TB
-    subgraph Tauri["🖥️ Tauri Desktop Shell"]
+    subgraph Tauri["Tauri Desktop Shell"]
         direction LR
-        UI["⚛️ React UI\n(WebView)"]
-        API["⚙️ .NET API\n(Sidecar)"]
+        UI["React UI\n(WebView)"]
+        API[".NET API\n(Sidecar)"]
         UI <-->|"localhost HTTP\n+ SignalR WS"| API
     end
 
     API -->|"manages"| Engine
 
-    subgraph Engine["🔩 Download Layer"]
-        MT["🧲 MonoTorrent Engine"]
-        DB["🗄️ PostgreSQL"]
+    subgraph Engine["Download Layer"]
+        MT["MonoTorrent Engine"]
+        DB["PostgreSQL"]
         MT <-->|"persists state"| DB
     end
 ```
