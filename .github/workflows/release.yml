@@ -1,0 +1,106 @@
+name: Release
+
+# Triggers when you push a version tag like: git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            dotnet-rid: linux-x64
+          - platform: windows-latest
+            dotnet-rid: win-x64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Build .NET sidecar ─────────────────────────────────────────────
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Publish .NET API sidecar
+        shell: bash
+        run: |
+          dotnet publish backend/HarborTorrent.Api \
+            --runtime ${{ matrix.dotnet-rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -c Release \
+            -o frontend/src-tauri/binaries/
+
+      # ── 3. Rename sidecar to match Tauri naming convention ────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Rename sidecar binary
+        run: node scripts/rename-sidecar.mjs
+        working-directory: frontend
+
+      # ── 4. Linux system dependencies (required by Tauri/WebKit) ──────────
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # ── 5. Rust (Tauri requires it) ───────────────────────────────────────
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri -> target
+
+      # ── 6. Build Tauri app & publish to GitHub Release ───────────────────
+      - name: Build and release Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: frontend
+          tagName: ${{ github.ref_name }}
+          releaseName: 'HarborTorrent ${{ github.ref_name }}'
+          releaseBody: |
+            ## What's new in ${{ github.ref_name }}
+
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/backend/CHANGELOG.md) for full details.
+
+            ---
+
+            ### Installation
+            | Platform | File |
+            |---|---|
+            | Windows | `.msi` or `.exe` setup installer |
+            | Linux | `.AppImage` (portable) or `.deb` (Debian/Ubuntu) |
+
+            > **Note:** HarborTorrent requires a PostgreSQL database connection. See the [README](https://github.com/${{ github.repository }}/blob/main/README.md#getting-started) for setup instructions.
+          releaseDraft: true
+          prerelease: false
