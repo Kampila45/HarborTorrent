@@ -77,7 +77,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            rpm
 
       # ── 6. Build Tauri app & publish to GitHub Release ───────────────────
       - name: Build and release Tauri app
