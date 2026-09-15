@@ -38,20 +38,22 @@ HarborTorrent/
 
 ## How It Works
 
-```
-┌─────────────────────────────────────┐
-│           Tauri Desktop Shell       │
-│  ┌──────────────┐  ┌─────────────┐ │
-│  │  React UI    │  │  .NET API   │ │
-│  │  (WebView)   │◄─►  (Sidecar) │ │
-│  └──────────────┘  └──────┬──────┘ │
-│                            │        │
-└────────────────────────────┼────────┘
-                             │
-                    ┌────────▼────────┐
-                    │  MonoTorrent    │
-                    │  Engine + DB    │
-                    └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph Tauri["🖥️ Tauri Desktop Shell"]
+        direction LR
+        UI["⚛️ React UI\n(WebView)"]
+        API["⚙️ .NET API\n(Sidecar)"]
+        UI <-->|"localhost HTTP\n+ SignalR WS"| API
+    end
+
+    API -->|"manages"| Engine
+
+    subgraph Engine["🔩 Download Layer"]
+        MT["🧲 MonoTorrent Engine"]
+        DB["🗄️ PostgreSQL"]
+        MT <-->|"persists state"| DB
+    end
 ```
 
 1. Tauri launches the `.NET` API binary as a **sidecar process** on startup.
