@@ -30,9 +30,7 @@ internal static class SystemEndpoints
 
     private static Task<IResult> GetVersionAsync()
     {
-        // Hardcoded simulation values trigger the UI update state.
-        // Return an outdated current version to demonstrate the auto-update flow.
-        return Task.FromResult(Results.Ok(new { version = "1.0.0", latestVersion = "1.1.0" }));
+        return Task.FromResult(Results.Ok(new { version = "1.0.0", latestVersion = "1.0.0" }));
     }
 
     private static async Task<IResult> TriggerUpdateAsync(ISender sender, CancellationToken cancellationToken)
