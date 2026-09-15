@@ -37,7 +37,7 @@ export function StreamPage() {
     );
   }
 
-  const nextFiles = filesData?.filter(f => f.index > file.index && f.path.match(/\.(mp4|mkv|avi|webm)$/i)).slice(0, 4) || [];
+  const nextFiles = filesData?.filter(f => f.index > (file?.index ?? -1) && f.path.match(/\.(mp4|mkv|avi|webm)$/i)).slice(0, 4) || [];
 
   return (
     <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-[1400px] mx-auto w-full space-y-6">
@@ -46,9 +46,9 @@ export function StreamPage() {
         <div className="flex items-center flex-wrap gap-2 text-[#5F5E5B] dark:text-[#E9E9E7] text-sm">
           <button onClick={() => navigate('/downloads')} className="hover:text-[#2563eb] transition-colors">Downloads</button>
           <ChevronRight size={14} />
-          <button onClick={() => navigate(`/torrent/${torrentId}`)} className="hover:text-[#2563eb] transition-colors truncate max-w-[200px]">{torrent.name}</button>
+          <button onClick={() => navigate(`/torrent/${torrentId}`)} className="hover:text-[#2563eb] transition-colors truncate max-w-[200px]">{torrent?.name}</button>
           <ChevronRight size={14} />
-          <span className="text-[#37352F] dark:text-[#E9E9E7] font-bold truncate max-w-[300px]">{file.path}</span>
+          <span className="text-[#37352F] dark:text-[#E9E9E7] font-bold truncate max-w-[300px]">{file?.path}</span>
         </div>
         <div className="flex gap-3">
           <button
@@ -80,11 +80,11 @@ export function StreamPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-2">
                 <h2 className="text-xl sm:text-2xl font-bold text-[#37352F] dark:text-[#E9E9E7] break-words">
-                  {file.path.split('/').pop()}
+                  {file?.path.split('/').pop()}
                 </h2>
                 <div className="flex flex-wrap items-center gap-4 text-[#5F5E5B] dark:text-[#E9E9E7] text-sm">
                   <span className="bg-[#f3f4f6] dark:bg-[#222222] px-2 py-0.5 rounded text-xs uppercase font-mono tracking-wider">Stream</span>
-                  <span className="flex items-center gap-1"><Folder size={16} /> {formatBytes(file.length)}</span>
+                  <span className="flex items-center gap-1"><Folder size={16} /> {formatBytes(file?.length ?? 0)}</span>
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></span>
                     Sequential Download Active

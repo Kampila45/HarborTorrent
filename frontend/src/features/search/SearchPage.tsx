@@ -14,7 +14,7 @@ export function SearchPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  const { data: results, isLoading, isError } = useQuery({
+  const { data: results, isLoading } = useQuery({
     queryKey: ['search', initialQuery],
     queryFn: () => searchApi.searchTorrents(initialQuery),
     enabled: initialQuery.length > 0,

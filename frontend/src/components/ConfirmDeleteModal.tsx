@@ -3,12 +3,14 @@ import { useEffect } from 'react';
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
-  torrentName: string;
+  torrentName?: string;
+  title?: string;
+  message?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ConfirmDeleteModal({ isOpen, torrentName, onConfirm, onCancel }: ConfirmDeleteModalProps) {
+export function ConfirmDeleteModal({ isOpen, torrentName, title, message, onConfirm, onCancel }: ConfirmDeleteModalProps) {
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -41,7 +43,7 @@ export function ConfirmDeleteModal({ isOpen, torrentName, onConfirm, onCancel }:
               <Trash2 size={18} className="text-[#D4403A]" />
             </div>
             <h2 id="delete-modal-title" className="text-[16px] font-semibold text-[#37352F] dark:text-[#E9E9E7]">
-              Remove Torrent
+              {title ?? 'Remove Torrent'}
             </h2>
           </div>
           <button
@@ -56,7 +58,7 @@ export function ConfirmDeleteModal({ isOpen, torrentName, onConfirm, onCancel }:
 
         {/* Body */}
         <p className="text-[14px] text-[#5F5E5B] dark:text-[#C4C4C4] mb-1">
-          Are you sure you want to remove this torrent?
+          {message ?? 'Are you sure you want to remove this torrent?'}
         </p>
         <p className="text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7] truncate mb-6">
           {torrentName}

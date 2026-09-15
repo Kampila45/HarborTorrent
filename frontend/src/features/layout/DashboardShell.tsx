@@ -36,7 +36,7 @@ const routes = navigationItems.map((item) => ({
 export function DashboardShell() {
   const { sidebarOpen, mobileNavOpen, toggleMobileNav, closeMobileNav, openAddTorrent, theme, setTheme } = useUiStore();
   const { pathname } = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.getSettings });
@@ -169,7 +169,7 @@ export function DashboardShell() {
           <button
             type="button"
             className="flex w-full items-center gap-2 rounded border border-[#EDEDEB] bg-white px-3 py-2 text-[14px] text-[#37352F] shadow-sm transition-colors hover:bg-[#F7F7F5]"
-            onClick={openAddTorrent}
+            onClick={() => openAddTorrent()}
           >
             <Plus size={18} />
             <span className={sidebarOpen ? '' : 'hidden'}>New Torrent</span>
