@@ -10,10 +10,13 @@ fn start_api_sidecar(app: &tauri::AppHandle) {
     match shell.sidecar("HarborTorrent.Api") {
         Ok(command) => {
             match command.spawn() {
-                Ok((_rx, _child)) => {
-                    // The sidecar is running. We intentionally drop _rx (stdout reader)
-                    // and _child handle — Tauri will clean up the process when the app exits.
+                Ok((mut rx, _child)) => {
                     println!("[HarborTorrent] API sidecar started on http://localhost:5000");
+                    
+                    // Drain the receiver to keep the stdout pipe open.
+                    tauri::async_runtime::spawn(async move {
+                        while let Some(_) = rx.recv().await {}
+                    });
                 }
                 Err(e) => {
                     eprintln!("[HarborTorrent] Failed to spawn API sidecar: {e}");
