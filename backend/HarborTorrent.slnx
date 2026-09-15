@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="HarborTorrent.Api/HarborTorrent.Api.csproj" />
+  <Project Path="HarborTorrent.Application/HarborTorrent.Application.csproj" />
+  <Project Path="HarborTorrent.Domain/HarborTorrent.Domain.csproj" />
+  <Project Path="HarborTorrent.Infrastructure/HarborTorrent.Infrastructure.csproj" />
+  <Project Path="HarborTorrent.Persistence/HarborTorrent.Persistence.csproj" />
+</Solution>

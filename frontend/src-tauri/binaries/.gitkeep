@@ -1,0 +1,3 @@
+# This directory holds the .NET API sidecar binary.
+# The actual binaries are NOT committed to git — they are built by the CI pipeline.
+# See .github/workflows/publish.yml and scripts/rename-sidecar.mjs

@@ -1,0 +1,26 @@
+@HarborTorrent.Api_HostAddress = http://localhost:5149
+@RequestId = harbor-torrent-local-test
+
+GET {{HarborTorrent.Api_HostAddress}}/health
+X-Request-ID: {{RequestId}}
+Accept: application/json
+
+###
+
+GET {{HarborTorrent.Api_HostAddress}}/api/v1/torrents
+X-Request-ID: {{RequestId}}
+Accept: application/json
+
+###
+
+POST {{HarborTorrent.Api_HostAddress}}/api/v1/torrents
+X-Request-ID: {{RequestId}}
+Content-Type: application/json
+
+{
+	"name": "Ubuntu ISO",
+	"savePath": "/tmp/harbor-downloads",
+	"magnetLink": "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678&dn=ubuntu-iso"
+}
+
+###
