@@ -18,7 +18,7 @@ HarborTorrent bundles the backend as a Tauri sidecar binary, so it ships as a si
 | Download Engine | [MonoTorrent 3.x](https://github.com/alanmcgovern/monotorrent) |
 | API | ASP.NET Core 10 Minimal APIs |
 | ORM | Entity Framework Core 10 |
-| Database | PostgreSQL |
+| Database | SQLite (embedded, zero setup) |
 | Architecture | Clean Architecture + CQRS (MediatR) |
 
 ---
@@ -60,7 +60,7 @@ flowchart LR
 - [Node.js 20+](https://nodejs.org)
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Rust toolchain](https://rustup.rs) (required by Tauri)
-- A PostgreSQL database (or [Neon](https://neon.tech) serverless connection string)
+- No database setup needed — SQLite runs embedded, data is stored locally on the user's machine
 
 ### Development
 
