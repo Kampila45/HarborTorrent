@@ -11,12 +11,12 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 var startedAtUtc = TimeProvider.System.GetUtcNow();
 
-// Bind explicitly to port 5000.
+// Bind explicitly to 127.0.0.1:5000 to prevent IPv4/IPv6 loopback mismatches.
 // The Vite dev proxy and all frontend service URLs target this port.
 // appsettings.json is NOT reliably available when running as a Tauri sidecar
 // (single-file publish places it beside the exe, but Tauri only bundles the binary),
 // so all critical configuration is hardcoded here.
-builder.WebHost.UseUrls("http://localhost:5000");
+builder.WebHost.UseUrls("http://127.0.0.1:5000");
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

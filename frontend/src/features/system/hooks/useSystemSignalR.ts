@@ -7,7 +7,7 @@ export function useSystemSignalR() {
 
   useEffect(() => {
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl('http://localhost:5000/hubs/system')
+      .withUrl('http://127.0.0.1:5000/hubs/system')
       .withAutomaticReconnect()
       .build();
 

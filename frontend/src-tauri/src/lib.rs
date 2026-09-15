@@ -11,7 +11,7 @@ fn start_api_sidecar(app: &tauri::AppHandle) {
         Ok(command) => {
             match command.spawn() {
                 Ok((mut rx, _child)) => {
-                    println!("[HarborTorrent] API sidecar started on http://localhost:5000");
+                    println!("[HarborTorrent] API sidecar started on http://127.0.0.1:5000");
                     
                     // Drain the receiver to keep the stdout pipe open.
                     tauri::async_runtime::spawn(async move {

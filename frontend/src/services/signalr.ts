@@ -6,7 +6,7 @@ export function createTorrentHubConnection() {
   // In production (Tauri), the absolute backend URL must be used since Tauri doesn't proxy.
   const hubUrl = import.meta.env.DEV 
     ? '/hubs/torrents' 
-    : 'http://localhost:5000/hubs/torrents';
+    : 'http://127.0.0.1:5000/hubs/torrents';
 
   return new HubConnectionBuilder()
     .withUrl(hubUrl)
