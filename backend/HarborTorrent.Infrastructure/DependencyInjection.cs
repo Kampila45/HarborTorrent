@@ -3,6 +3,7 @@ using HarborTorrent.Application.Abstractions.Runtime;
 using HarborTorrent.Application.Abstractions.Torrents;
 using HarborTorrent.Infrastructure.Realtime;
 using HarborTorrent.Infrastructure.Runtime;
+using HarborTorrent.Application.Abstractions.Search;
 using HarborTorrent.Infrastructure.Search;
 using HarborTorrent.Infrastructure.Torrents;
 using Microsoft.Extensions.Configuration;
@@ -26,8 +27,11 @@ public static class DependencyInjection
         services.AddHostedService<TorrentLifecycleHostedService>();
         services.AddHostedService<HarborTorrent.Infrastructure.BackgroundJobs.RssPollingHostedService>();
         
-        services.AddHttpClient<HarborTorrent.Application.Abstractions.Search.ITorrentSearchProvider, ApibaySearchProvider>();
-        services.AddHttpClient<HarborTorrent.Application.Abstractions.Search.ITorrentSearchProvider, YtsSearchProvider>();
+        services.AddHttpClient<ApibaySearchProvider>();
+        services.AddScoped<ITorrentSearchProvider>(sp => sp.GetRequiredService<ApibaySearchProvider>());
+
+        services.AddHttpClient<YtsSearchProvider>();
+        services.AddScoped<ITorrentSearchProvider>(sp => sp.GetRequiredService<YtsSearchProvider>());
 
         return services;
     }

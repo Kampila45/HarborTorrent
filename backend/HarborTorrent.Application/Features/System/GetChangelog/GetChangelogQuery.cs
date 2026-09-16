@@ -11,17 +11,13 @@ internal sealed class GetChangelogQueryHandler : IRequestHandler<GetChangelogQue
 {
     public async Task<string> Handle(GetChangelogQuery request, CancellationToken cancellationToken)
     {
-        var changelogPath = Path.Combine(global::System.AppContext.BaseDirectory, "../../../../CHANGELOG.md");
+        var assembly = typeof(GetChangelogQueryHandler).Assembly;
+        using var stream = assembly.GetManifestResourceStream("CHANGELOG.md");
         
-        // Check alternate relative paths to support both local development (dotnet run) and published binaries.
-        if (!File.Exists(changelogPath))
+        if (stream != null)
         {
-            changelogPath = Path.Combine(global::System.AppContext.BaseDirectory, "CHANGELOG.md");
-        }
-
-        if (File.Exists(changelogPath))
-        {
-            return await File.ReadAllTextAsync(changelogPath, cancellationToken);
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync(cancellationToken);
         }
 
         return "Changelog not found.";

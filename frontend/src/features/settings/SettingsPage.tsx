@@ -5,6 +5,8 @@ import { settingsApi, type SettingsDto } from './api';
 import { FolderBrowserModal } from '@/features/directories/components/FolderBrowserModal';
 import { systemApi } from '@/features/system/api';
 import { useSystemStore } from '@/store/systemStore';
+import { triggerManualUpdate } from '@/features/system/hooks/useSystemUpdater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 const renderMarkdown = (text: string) => {
   return text.split('\n').map((line, index) => {
@@ -43,7 +45,7 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'storage' | 'bandwidth' | 'anchor' | 'network' | 'about'>('storage');
 
   // System Update State
-  const { isUpdating, updateProgress, updateComplete, setIsUpdating } = useSystemStore();
+  const { isUpdating, updateProgress, updateComplete, setIsUpdating, setUpdateProgress, setUpdateComplete } = useSystemStore();
 
   // Convert UI input bytes to KB/s for clarity.
   const [maxDownloadKbps, setMaxDownloadKbps] = useState<string>('');
@@ -408,13 +410,7 @@ export function SettingsPage() {
               {versionInfo?.version !== versionInfo?.latestVersion && !isUpdating && !updateComplete && (
                 <button
                   onClick={async () => {
-                    try {
-                      setIsUpdating(true);
-                      await systemApi.triggerUpdate();
-                    } catch (err) {
-                      console.error('Failed to trigger update:', err);
-                      setIsUpdating(false);
-                    }
+                    await triggerManualUpdate(setIsUpdating, setUpdateProgress, setUpdateComplete);
                   }}
                   className="flex items-center gap-2 rounded-md border border-[#EDEDEB] dark:border-[#444444] bg-[#F7F7F5] dark:bg-[#2A2A2A] px-4 py-2 text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7] shadow-sm transition-colors hover:bg-[#E1E1E1] dark:hover:bg-[#333333] active:scale-[0.98]"
                 >
@@ -451,7 +447,7 @@ export function SettingsPage() {
                   <span className="text-[14px] font-semibold">Update successfully installed!</span>
                 </div>
                 <button
-                  onClick={() => window.location.reload()}
+                  onClick={() => relaunch()}
                   className="flex items-center gap-2 rounded-md border border-[#EDEDEB] dark:border-[#444444] bg-[#F7F7F5] dark:bg-[#2A2A2A] px-4 py-2 text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7] shadow-sm transition-colors hover:bg-[#E1E1E1] dark:hover:bg-[#333333] active:scale-[0.98]"
                 >
                   <RotateCcw size={16} />

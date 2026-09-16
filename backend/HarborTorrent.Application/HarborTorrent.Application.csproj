@@ -1,7 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\HarborTorrent.Domain\HarborTorrent.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\CHANGELOG.md" Link="CHANGELOG.md" LogicalName="CHANGELOG.md" />
   </ItemGroup>
 
   <ItemGroup>
