@@ -7,6 +7,7 @@ import { systemApi } from '@/features/system/api';
 import { useSystemStore } from '@/store/systemStore';
 import { triggerManualUpdate } from '@/features/system/hooks/useSystemUpdater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import packageJson from '../../../../package.json';
 
 const renderMarkdown = (text: string) => {
   return text.split('\n').map((line, index) => {
@@ -60,7 +61,23 @@ export function SettingsPage() {
 
   const { data: versionInfo } = useQuery({ 
     queryKey: ['system-version'], 
-    queryFn: systemApi.getVersion 
+    queryFn: async () => {
+      let tauriVersion = packageJson.version || '1.0.1';
+      try {
+        if ('__TAURI_INTERNALS__' in window) {
+          const { getVersion } = await import('@tauri-apps/api/app');
+          tauriVersion = await getVersion();
+        }
+      } catch (e) {
+        console.warn('Could not read Tauri app version', e);
+      }
+      
+      const apiVersion = await systemApi.getVersion();
+      return {
+        ...apiVersion,
+        version: tauriVersion
+      };
+    } 
   });
 
   const { data: changelog } = useQuery({ 

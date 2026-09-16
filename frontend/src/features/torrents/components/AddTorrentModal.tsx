@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { UploadCloud, X, AlertCircle } from 'lucide-react';
 import { useTorrentActions } from '@/features/torrents/hooks/useTorrentActions';
 import { useUiStore } from '@/store/uiStore';
@@ -34,7 +34,7 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 export function AddTorrentModal() {
-  const { addTorrentOpen, closeAddTorrent, addTorrentInitialValue } = useUiStore();
+  const { addTorrentOpen, closeAddTorrent, addTorrentInitialValue, addTorrentInitialFile } = useUiStore();
   const { addMutation, startMutation } = useTorrentActions();
   const [form, setForm] = useState<TorrentFormState>(initialState);
   const [file, setFile] = useState<File | null>(null);
@@ -47,8 +47,12 @@ export function AddTorrentModal() {
         setForm(current => ({
           ...current,
           magnetLink: addTorrentInitialValue || current.magnetLink,
+          fileName: addTorrentInitialFile?.name || current.fileName,
           location: response.data.defaultDownloadPath || current.location
         }));
+        
+        // Cannot easily create a File object from a base64 string without overhead.
+        // Therefore, track the pre-filled base64 in the component state if it exists.
       }).catch(console.error);
     } else {
       setForm(initialState);
@@ -67,27 +71,33 @@ export function AddTorrentModal() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [addTorrentOpen, closeAddTorrent]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.location) return;
+
+    let torrentFileContentBase64 = '';
+    if (file) {
+      torrentFileContentBase64 = await fileToBase64(file);
+    } else if (addTorrentInitialFile) {
+      torrentFileContentBase64 = addTorrentInitialFile.base64;
+    }
+
+    const input = {
+      savePath: form.location,
+      ...(form.magnetLink.trim() ? { magnetLink: form.magnetLink.trim() } : {}),
+      ...(torrentFileContentBase64
+        ? {
+            torrentFileName: file?.name || addTorrentInitialFile?.name || 'unknown.torrent',
+            torrentFileContentBase64,
+          }
+        : {}),
+    };
 
     try {
-      const torrentFileContentBase64 = file ? await fileToBase64(file) : undefined;
-
-      const input = {
-        savePath: form.location,
-        ...(form.magnetLink.trim() ? { magnetLink: form.magnetLink.trim() } : {}),
-        ...(file && torrentFileContentBase64
-          ? {
-              torrentFileName: file.name,
-              torrentFileContentBase64,
-            }
-          : {}),
-      };
-
-      const addedTorrent = await addMutation.mutateAsync(input);
+      const response = await addMutation.mutateAsync(input);
 
       if (form.startImmediately) {
-        await startMutation.mutateAsync(addedTorrent.id);
+        await startMutation.mutateAsync(response.id);
       }
 
       playPop();

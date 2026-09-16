@@ -8,6 +8,7 @@
     <AssemblyName>HarborTorrent.Api</AssemblyName>
     <RootNamespace>HarborTorrent.Api</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
