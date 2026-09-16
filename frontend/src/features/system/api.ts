@@ -19,8 +19,4 @@ export const systemApi = {
     const response = await api.get<VersionInfo>('/version');
     return response.data;
   },
-
-  triggerUpdate: async (): Promise<void> => {
-    await api.post('/update');
-  },
 };

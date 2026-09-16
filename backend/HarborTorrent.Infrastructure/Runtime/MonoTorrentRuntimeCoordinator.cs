@@ -53,10 +53,8 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
             {
                 MaximumDownloadRate = settings.AnchorModeEnabled ? (int)settings.AnchorMaxDownloadSpeedBytes : (int)settings.MaxDownloadSpeedBytes,
                 MaximumUploadRate = settings.AnchorModeEnabled ? (int)settings.AnchorMaxUploadSpeedBytes : (int)settings.MaxUploadSpeedBytes,
-                AllowLocalPeerDiscovery = settings.EnableLpd
-                // Note: MonoTorrent v3 manages DHT and PEX differently 
-                // (e.g. by registering a DhtEngine directly on ClientEngine).
-                // Limit this to LPD and Bandwidth for this settings pass.
+                AllowLocalPeerDiscovery = settings.EnableLpd,
+                DhtEndPoint = settings.EnableDht ? new IPEndPoint(IPAddress.Any, 0) : null
             };
 
             await _engine.UpdateSettingsAsync(builder.ToSettings());
@@ -415,7 +413,9 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
         var settings = new TorrentSettingsBuilder
         {
-            CreateContainingDirectory = true
+            CreateContainingDirectory = true,
+            AllowDht = true,
+            AllowPeerExchange = true
         }.ToSettings();
 
         if (torrent.Source.Kind == TorrentSourceKind.MagnetLink)

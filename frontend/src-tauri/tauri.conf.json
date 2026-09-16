@@ -25,6 +25,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU3OUJBRjdENjI2ODgwQjEKUldTeGdHaGlmYStiNStsNjIvT2c2UVZCTmVGakJmTldMeFZXelZiMzR3VXJ3V1dBZ3VEQ0NZNDgK",
+      "endpoints": [
+        "https://github.com/Kampila45/HarborTorrent/releases/latest/download/updater.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

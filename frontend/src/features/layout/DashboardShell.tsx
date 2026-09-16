@@ -5,7 +5,7 @@ import { BarChart3, CheckSquare, Download, LayoutDashboard, Menu, Moon, Plus, Se
 import { AddTorrentModal } from '@/features/torrents/components/AddTorrentModal';
 import { useUiStore } from '@/store/uiStore';
 import { useTorrentSignalR } from '@/features/torrents/hooks/useTorrentSignalR';
-import { useSystemSignalR } from '@/features/system/hooks/useSystemSignalR';
+import { useSystemUpdater } from '@/features/system/hooks/useSystemUpdater';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '@/features/settings/api';
 
@@ -53,7 +53,7 @@ export function DashboardShell() {
 
   // Establish SignalR connection for live torrent updates
   useTorrentSignalR();
-  useSystemSignalR();
+  useSystemUpdater();
 
   // Close mobile drawer on route change
   useEffect(() => { closeMobileNav(); }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
