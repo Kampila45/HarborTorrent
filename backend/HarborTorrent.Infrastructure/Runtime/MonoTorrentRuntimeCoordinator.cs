@@ -29,7 +29,10 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
         var runtimeDataPath = configuration["HarborTorrent:RuntimeDataPath"];
         var baseRuntimePath = string.IsNullOrWhiteSpace(runtimeDataPath)
-            ? Path.Combine(AppContext.BaseDirectory, "App_Data")
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "HarborTorrent",
+                "runtime")
             : Path.GetFullPath(runtimeDataPath);
         var cacheDirectory = Path.Combine(baseRuntimePath, "torrent-cache");
         _engineStatePath = Path.Combine(baseRuntimePath, "engine-state.dat");
