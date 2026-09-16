@@ -162,3 +162,8 @@ src-tauri/binaries/HarborTorrent.Api-*
 
 # GitHub directory
 .github/
+
+# Tauri Updater Keys
+updater.key
+updater.key.pub
+

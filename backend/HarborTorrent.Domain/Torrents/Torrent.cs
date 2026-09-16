@@ -170,8 +170,8 @@ public sealed class Torrent
         var normalizedProgress = decimal.Clamp(progress, 0m, 100m);
 
         Progress = normalizedProgress;
-    DownloadedBytes = Math.Max(0, downloadedBytes);
-    UploadedBytes = Math.Max(0, uploadedBytes);
+        DownloadedBytes = Math.Max(0, downloadedBytes);
+        UploadedBytes = Math.Max(0, uploadedBytes);
         DownloadSpeedBytesPerSecond = downloadSpeedBytesPerSecond;
         UploadSpeedBytesPerSecond = uploadSpeedBytesPerSecond;
         Ratio = ratio < 0m ? 0m : ratio;

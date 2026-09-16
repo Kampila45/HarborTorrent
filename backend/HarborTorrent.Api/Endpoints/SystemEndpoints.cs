@@ -1,5 +1,4 @@
 using HarborTorrent.Application.Features.System.GetChangelog;
-using HarborTorrent.Application.Features.System.TriggerUpdate;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -17,7 +16,6 @@ internal static class SystemEndpoints
 
         group.MapGet("/changelog", GetChangelogAsync);
         group.MapGet("/version", GetVersionAsync);
-        group.MapPost("/update", TriggerUpdateAsync);
 
         return app;
     }
@@ -33,9 +31,4 @@ internal static class SystemEndpoints
         return Task.FromResult(Results.Ok(new { version = "1.0.0", latestVersion = "1.0.0" }));
     }
 
-    private static async Task<IResult> TriggerUpdateAsync(ISender sender, CancellationToken cancellationToken)
-    {
-        await sender.Send(new TriggerUpdateCommand(), cancellationToken);
-        return Results.Accepted();
-    }
 }
