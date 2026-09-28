@@ -1,16 +1,36 @@
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { getSessionConfig } from '@/services/session';
 
-// Desktop build: connects without a token — no authentication required.
-export function createTorrentHubConnection() {
-  // In development, use the relative path to route through the Vite proxy (avoiding CORS/preflight issues).
-  // In production (Tauri), the absolute backend URL must be used since Tauri doesn't proxy.
-  const hubUrl = import.meta.env.DEV 
-    ? '/hubs/torrents' 
-    : 'http://127.0.0.1:5000/hubs/torrents';
+/**
+ * Creates a SignalR hub connection for the given hub path.
+ * The launch token is passed as a query parameter during the initial negotiation
+ * request so the backend hub filter can authenticate the connection.
+ */
+function createHubConnection(hubPath: string) {
+  const { apiBaseUrl, launchToken } = getSessionConfig();
+
+  // Derive the hub base from the API base URL (strip /api/v1 suffix if present).
+  const baseUrl = apiBaseUrl.replace(/\/api\/v1\/?$/, '');
+
+  // In development, use a relative path to route through the Vite proxy.
+  const hubUrl = import.meta.env.DEV
+    ? hubPath
+    : `${baseUrl}${hubPath}`;
 
   return new HubConnectionBuilder()
-    .withUrl(hubUrl)
+    .withUrl(hubUrl, {
+      // Pass the token as a query parameter so the hub filter can validate it.
+      accessTokenFactory: () => launchToken,
+    })
     .withAutomaticReconnect()
     .configureLogging(LogLevel.Information)
     .build();
+}
+
+export function createTorrentHubConnection() {
+  return createHubConnection('/hubs/torrents');
+}
+
+export function createSystemHubConnection() {
+  return createHubConnection('/hubs/system');
 }

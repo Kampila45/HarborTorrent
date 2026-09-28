@@ -6,6 +6,7 @@ using HarborTorrent.Infrastructure.Runtime;
 using HarborTorrent.Application.Abstractions.Search;
 using HarborTorrent.Infrastructure.Search;
 using HarborTorrent.Infrastructure.Torrents;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,12 +14,17 @@ namespace HarborTorrent.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, string launchToken)
     {
-        services.AddSignalR().AddJsonProtocol(options =>
-        {
-            options.PayloadSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
-        });
+        services.AddSignalR()
+            .AddJsonProtocol(options =>
+            {
+                options.PayloadSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+            });
+
+        // Register the hub filter as a singleton so SignalR resolves and applies it to all hubs.
+        // The launch token is captured in the closure from the infrastructure setup call.
+        services.AddSingleton<IHubFilter>(new LaunchTokenHubFilter(launchToken));
         services.AddSingleton<MonoTorrentRuntimeCoordinator>();
         services.AddSingleton<ITorrentRuntimeCoordinator>(serviceProvider => serviceProvider.GetRequiredService<MonoTorrentRuntimeCoordinator>());
         services.AddSingleton<ITorrentSourceMetadataProvider, MonoTorrentSourceMetadataProvider>();

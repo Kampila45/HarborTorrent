@@ -4,6 +4,7 @@ import axios, {
   type AxiosInstance,
 } from 'axios';
 import type { ApiResponse } from '@/app/types';
+import { getSessionConfig } from '@/services/session';
 
 let requestCounter = 0;
 
@@ -14,17 +15,26 @@ export type ApiErrorShape = {
 };
 
 export function createHttpClient(): AxiosInstance {
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000/api/v1';
-
+  // Base URL and launch token are resolved from the Tauri session config after startup.
+  // A placeholder client is created here; interceptors read the config at request time.
   const client = axios.create({
-    baseURL: apiBaseUrl,
     timeout: 8000,
   });
 
   client.interceptors.request.use(async (config) => {
+    const session = getSessionConfig();
+
+    config.baseURL = session.apiBaseUrl;
+
     const requestId = `req_${++requestCounter}`;
     const headers = config.headers ?? new AxiosHeaders();
     headers.set('X-Request-Id', requestId);
+
+    // Attach the per-session launch token so the backend can authenticate the request.
+    if (session.launchToken) {
+      headers.set('X-Launch-Token', session.launchToken);
+    }
+
     config.headers = headers;
     return config;
   });

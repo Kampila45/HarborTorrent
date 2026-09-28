@@ -1,5 +1,11 @@
 # HarborTorrent Changelog
 
+## v1.1.0
+- **Sleek New Look**: We've updated the typography across the entire app using the crisp and readable *Inter* font, giving HarborTorrent a truly premium, cohesive feel.
+- **Beautiful Error Pages**: Running into connection issues is never fun, but if something goes wrong, you'll now be greeted by our gorgeous new "Engine Failure" illustrations with interactive 3D effects instead of a generic error screen.
+- **Ironclad Security**: We've significantly strengthened the application's internal engine. Your local application is now strictly authenticated and completely locked down against unauthorized access on your network.
+- **Smoother Development**: For our contributors, we've added graceful fallbacks so you can now easily test and develop the application directly in your web browser!
+
 ## v1.0.1
 - **Automatic Updates**: HarborTorrent now automatically checks for updates in the background! You'll get a friendly notification when a new version is ready, keeping you on the latest and greatest version effortlessly.
 - **Lightning Fast Downloads**: We've supercharged download speeds and fixed Magnet Link support by enabling decentralized peer finding (DHT & PEX).

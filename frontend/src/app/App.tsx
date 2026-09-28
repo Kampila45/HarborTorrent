@@ -9,16 +9,18 @@ import { CompletedPage } from '@/features/completed/CompletedPage';
 import { TorrentDetailsPage } from '@/features/torrents/TorrentDetailsPage';
 import { NotFoundPage } from '@/features/error/NotFoundPage';
 import { InternalServerErrorPage } from '@/features/error/InternalServerErrorPage';
+import { BackendErrorPage } from '@/features/error/BackendErrorPage';
 import { StreamPage } from '@/features/torrents/StreamPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { SearchPage } from '@/features/search/SearchPage';
 import { RssPage } from '@/features/rss/RssPage';
 import { GlobalNotificationListener } from '@/app/GlobalNotificationListener';
-
+import { useBackendReady } from '@/features/system/hooks/useBackendReady';
 import { Toaster } from 'sonner';
 
 export function App() {
   const { theme } = useUiStore();
+  const backendState = useBackendReady();
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -53,10 +55,10 @@ export function App() {
                 binary += String.fromCharCode(bytes[i]!);
               }
               const base64 = window.btoa(binary);
-              
+
               // Extract filename from path
               const name = torrentPath.split(/[\\/]/).pop() || 'unknown.torrent';
-              
+
               openAddTorrent(undefined, { name, base64 });
             } catch (error) {
               console.error('Failed to read dropped file', error);
@@ -74,13 +76,27 @@ export function App() {
     };
   }, [openAddTorrent]);
 
-  // Desktop build: no authentication required.
-  // The app opens directly to the dashboard.
+  if (backendState === 'error') {
+    return <BackendErrorPage />;
+  }
+
+  if (backendState === 'loading') {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[var(--bg-primary)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[#2383E2]" />
+          <p className="text-sm text-[var(--text-secondary)]">Starting HarborTorrent…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // The backend is healthy — render the full application.
   return (
     <>
-      <Toaster 
-        position="bottom-right" 
-        theme={theme === 'dark' ? 'dark' : 'light'} 
+      <Toaster
+        position="bottom-right"
+        theme={theme === 'dark' ? 'dark' : 'light'}
         toastOptions={{
           style: {
             background: 'var(--bg-primary)',
