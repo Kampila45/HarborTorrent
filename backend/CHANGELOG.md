@@ -1,6 +1,6 @@
 # HarborTorrent Changelog
 
-## v1.1.0
+## v1.0.2
 - **Sleek New Look**: We've updated the typography across the entire app using the crisp and readable *Inter* font, giving HarborTorrent a truly premium, cohesive feel.
 - **Beautiful Error Pages**: Running into connection issues is never fun, but if something goes wrong, you'll now be greeted by our gorgeous new "Engine Failure" illustrations with interactive 3D effects instead of a generic error screen.
 - **Ironclad Security**: We've significantly strengthened the application's internal engine. Your local application is now strictly authenticated and completely locked down against unauthorized access on your network.
