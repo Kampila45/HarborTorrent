@@ -10,6 +10,7 @@ export function useSystemUpdater() {
     let mounted = true;
 
     const checkUpdates = async () => {
+      if (!('__TAURI_INTERNALS__' in window)) return;
       try {
         const update = await check();
         if (update && mounted) {
@@ -42,6 +43,13 @@ export async function triggerManualUpdate(
   setUpdateProgress: (val: number) => void,
   setUpdateComplete: (val: boolean) => void
 ) {
+  if (!('__TAURI_INTERNALS__' in window)) {
+    toast.info('Browser Mode', {
+      description: 'Automatic updates are only supported in the native desktop app.',
+    });
+    return;
+  }
+  
   try {
     const update = await check();
     if (update) {

@@ -1,6 +1,6 @@
 name: Release
 
-# Triggers when you push a version tag like: git tag v1.0.0 && git push origin v1.0.0
+# Triggers when a version tag is pushed: git tag v1.0.1 && git push origin v1.0.1
 on:
   push:
     tags:
@@ -29,11 +29,30 @@ jobs:
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        # actions/checkout@v4.2.2 — pinned to immutable SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      # ── 2. Build .NET sidecar ─────────────────────────────────────────────
+      # ── 2. Check version consistency ─────────────────────────────────────────
+      - name: Setup Node.js (for version check)
+        # actions/setup-node@v4.4.0 — pinned to immutable SHA
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Verify version consistency across all components
+        run: node scripts/check-versions.mjs
+        working-directory: frontend
+
+      # ── 3. Build .NET sidecar ─────────────────────────────────────────────
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        # actions/setup-dotnet@v4.3.1 — pinned to immutable SHA
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: '10.x'
 
@@ -47,33 +66,27 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -c Release \
             -o frontend/src-tauri/binaries/
+        env:
+          # Embed the git commit SHA into the sidecar for traceability via /health.
+          HARBOR_COMMIT_SHA: ${{ github.sha }}
 
-      # ── 3. Rust (needed before rename-sidecar, which calls `rustc --print host-tuple`) ──
+      # ── 4. Rust setup ─────────────────────────────────────────────────────
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        # dtolnay/rust-toolchain@stable — pinned to immutable SHA
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdfd8a531
 
       - name: Cache Rust build artifacts
-        uses: swatinem/rust-cache@v2
+        # swatinem/rust-cache@v2.7.8 — pinned to immutable SHA
+        uses: swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34b5c519b31
         with:
           workspaces: frontend/src-tauri -> target
 
-      # ── 4. Rename sidecar to match Tauri naming convention ────────────────
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: frontend
-
+      # ── 5. Rename sidecar to match Tauri naming convention ────────────────
       - name: Rename sidecar binary
         run: node scripts/rename-sidecar.mjs
         working-directory: frontend
 
-      # ── 5. Linux system dependencies (required by Tauri/WebKit) ──────────
+      # ── 6. Linux system dependencies (required by Tauri/WebKit) ──────────
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -85,11 +98,13 @@ jobs:
             patchelf \
             rpm
 
-      # ── 6. Build Tauri app & publish to GitHub Release ───────────────────
+      # ── 7. Build Tauri app & publish to GitHub Release ───────────────────
       - name: Build and release Tauri app
-        uses: tauri-apps/tauri-action@v0
+        # tauri-apps/tauri-action@v0.5.18 — pinned to immutable SHA
+        uses: tauri-apps/tauri-action@9cf0f54a10b0f14d4e8d8b5b0a97a9d6f4f0b5c2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           projectPath: frontend
           tagName: ${{ github.ref_name }}
@@ -104,9 +119,47 @@ jobs:
             ### Installation
             | Platform | File |
             |---|---|
-            | Windows | `.msi` or `.exe` setup installer |
-            | Linux | `.AppImage` (portable) or `.deb` (Debian/Ubuntu) |
+            | Windows x64 | `.msi` or `.exe` setup installer |
+            | Windows ARM64 | `.msi` or `.exe` setup installer |
+            | Linux x64 | `.AppImage` (portable), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL) |
+            | Linux ARM64 | `.AppImage` (portable), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL) |
+
+            > **RPM installation:** `sudo rpm -i HarborTorrent-*.rpm` or `sudo dnf install ./HarborTorrent-*.rpm`
 
             > **Note:** HarborTorrent uses an embedded SQLite database. No database setup or server is required — just install and run!
+
+            ---
+
+            ### Verifying downloads
+            SHA-256 checksums for all release assets are available in `checksums.sha256.txt`.
           releaseDraft: true
           prerelease: false
+
+      # ── 8. Generate SHA-256 checksums for all release assets ─────────────
+      - name: Generate SHA-256 checksums (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          find frontend/src-tauri/target -maxdepth 4 \
+            \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
+            -exec sha256sum {} \; >> checksums.sha256.txt || true
+
+      - name: Generate SHA-256 checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path frontend\src-tauri\target -Recurse -Include "*.msi","*.exe","*.nsis" |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$hash  $($_.Name)" | Out-File -Append checksums.sha256.txt
+            }
+
+      - name: Upload checksums to release
+        if: hashFiles('checksums.sha256.txt') != ''
+        # softprops/action-gh-release@v2.3.2 — pinned to immutable SHA
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a7f0e5d13a6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: checksums.sha256.txt
+          tag_name: ${{ github.ref_name }}

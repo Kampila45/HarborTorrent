@@ -7,7 +7,7 @@ import { systemApi } from '@/features/system/api';
 import { useSystemStore } from '@/store/systemStore';
 import { triggerManualUpdate } from '@/features/system/hooks/useSystemUpdater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import packageJson from '../../../../package.json';
+import packageJson from '../../../package.json';
 
 const renderMarkdown = (text: string) => {
   return text.split('\n').map((line, index) => {
