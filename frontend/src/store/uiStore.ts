@@ -7,12 +7,13 @@ type UiState = {
   mobileNavOpen: boolean;
   addTorrentOpen: boolean;
   addTorrentInitialValue: string | null;
+  addTorrentInitialFile: { name: string; base64: string } | null;
   setTheme: (theme: 'light' | 'dark') => void;
   setSidebarOpen: (value: boolean) => void;
   toggleSidebar: () => void;
   toggleMobileNav: () => void;
   closeMobileNav: () => void;
-  openAddTorrent: (initialValue?: string) => void;
+  openAddTorrent: (initialValue?: string, initialFile?: { name: string; base64: string }) => void;
   closeAddTorrent: () => void;
 };
 
@@ -24,13 +25,14 @@ export const useUiStore = create<UiState>()(
       mobileNavOpen: false,
       addTorrentOpen: false,
       addTorrentInitialValue: null,
+      addTorrentInitialFile: null,
       setTheme: (theme) => set({ theme }),
       setSidebarOpen: (value) => set({ sidebarOpen: value }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleMobileNav: () => set((state) => ({ mobileNavOpen: !state.mobileNavOpen })),
       closeMobileNav: () => set({ mobileNavOpen: false }),
-      openAddTorrent: (initialValue) => set({ addTorrentOpen: true, addTorrentInitialValue: initialValue ?? null }),
-      closeAddTorrent: () => set({ addTorrentOpen: false, addTorrentInitialValue: null }),
+      openAddTorrent: (initialValue, initialFile) => set({ addTorrentOpen: true, addTorrentInitialValue: initialValue ?? null, addTorrentInitialFile: initialFile ?? null }),
+      closeAddTorrent: () => set({ addTorrentOpen: false, addTorrentInitialValue: null, addTorrentInitialFile: null }),
     }),
     {
       name: 'ui-storage',
