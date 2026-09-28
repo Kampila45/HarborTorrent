@@ -37,7 +37,7 @@ export function GlobalNotificationListener() {
       currentStatuses[torrent.id] = torrent.status;
 
       const previousStatus = previousStatusRef.current[torrent.id];
-      
+
       // Detect transition from Downloading to Seeding (or Completed)
       if (previousStatus === 'Downloading' && (torrent.status === 'Seeding' || torrent.status === 'Completed')) {
         playChime();
@@ -46,15 +46,26 @@ export function GlobalNotificationListener() {
           duration: 5000,
         });
 
-        // Try to trigger a native desktop notification
+        const title = 'Download Complete';
+        const body = torrent.name;
+
+        // Try to trigger a native desktop notification or browser fallback
         try {
-          const granted = await isPermissionGranted();
-          if (granted) {
-            sendNotification({
-              title: 'Download Complete',
-              body: torrent.name,
-              icon: 'icons/32x32.png',
-            });
+          if ('__TAURI_INTERNALS__' in window) {
+            // Tauri Native Notification
+            const granted = await isPermissionGranted();
+            if (granted) {
+              sendNotification({
+                title,
+                body,
+                icon: 'icons/32x32.png',
+              });
+            }
+          } else if ('Notification' in window) {
+            // HTML5 Browser Notification
+            if (Notification.permission === 'granted') {
+              new Notification(title, { body, icon: '/logo.png' });
+            }
           }
         } catch (e) {
           console.error('Failed to send desktop notification', e);
