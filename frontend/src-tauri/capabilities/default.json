@@ -21,7 +21,14 @@
           "name": "HarborTorrent.Api",
           "sidecar": true
         }
-      ]
-    }
+    },
+    "fs:default",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": ["**/*.torrent"]
+    },
+    "notification:default",
+    "process:default",
+    "updater:default"
   ]
 }

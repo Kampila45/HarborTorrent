@@ -28,6 +28,52 @@ export function App() {
     }
   }, [theme]);
 
+  const openAddTorrent = useUiStore(state => state.openAddTorrent);
+
+  useEffect(() => {
+    // Only run this in the Tauri environment
+    if (!('__TAURI_INTERNALS__' in window)) return;
+
+    let unlisten: (() => void) | undefined;
+
+    const setupDragDrop = async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { readFile } = await import('@tauri-apps/plugin-fs');
+
+      const unlistenPromise = getCurrentWindow().onDragDropEvent(async (event) => {
+        if (event.payload.type === 'drop') {
+          const filePaths = event.payload.paths;
+          const torrentPath = filePaths.find(p => p.endsWith('.torrent'));
+
+          if (torrentPath) {
+            try {
+              const bytes = await readFile(torrentPath);
+              let binary = '';
+              for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]!);
+              }
+              const base64 = window.btoa(binary);
+              
+              // Extract filename from path
+              const name = torrentPath.split(/[\\/]/).pop() || 'unknown.torrent';
+              
+              openAddTorrent(undefined, { name, base64 });
+            } catch (error) {
+              console.error('Failed to read dropped file', error);
+            }
+          }
+        }
+      });
+      unlisten = await unlistenPromise;
+    };
+
+    setupDragDrop();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openAddTorrent]);
+
   // Desktop build: no authentication required.
   // The app opens directly to the dashboard.
   return (

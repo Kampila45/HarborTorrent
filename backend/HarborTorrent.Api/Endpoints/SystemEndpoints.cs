@@ -28,7 +28,8 @@ internal static class SystemEndpoints
 
     private static Task<IResult> GetVersionAsync()
     {
-        return Task.FromResult(Results.Ok(new { version = "1.0.0", latestVersion = "1.0.0" }));
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+        return Task.FromResult(Results.Ok(new { version = version, latestVersion = version }));
     }
 
 }
