@@ -21,6 +21,7 @@
           "name": "HarborTorrent.Api",
           "sidecar": true
         }
+      ]
     },
     "fs:default",
     {
