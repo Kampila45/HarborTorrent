@@ -125,21 +125,37 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
     public async Task RemoveAsync(Guid torrentId, CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(CancellationToken.None);
+        TorrentManager? manager;
 
+        // Remove the manager from the live dictionary immediately under the lock so
+        // no other operation can observe it after removal is requested. The lock is
+        // released before stopping the manager and removing it from the engine, because
+        // tracker shutdown can take several seconds and must not starve other operations.
+        await _gate.WaitAsync(CancellationToken.None);
         try
         {
-            if (!_managers.Remove(torrentId, out var manager))
+            if (!_managers.Remove(torrentId, out manager))
             {
                 return;
             }
+        }
+        finally
+        {
+            _gate.Release();
+        }
 
-            if (manager.State != TorrentState.Stopped)
-            {
-                await manager.StopAsync();
-            }
+        // Stop and remove outside the shared semaphore to avoid blocking callers.
+        if (manager.State != TorrentState.Stopped)
+        {
+            await manager.StopAsync();
+        }
 
-            await _engine.RemoveAsync(manager);
+        await _engine.RemoveAsync(manager);
+
+        // Re-acquire briefly only to persist engine state.
+        await _gate.WaitAsync(CancellationToken.None);
+        try
+        {
             await SaveEngineStateAsync();
         }
         finally

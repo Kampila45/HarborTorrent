@@ -41,6 +41,7 @@ const renderMarkdown = (text: string) => {
 export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsDto | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'storage' | 'bandwidth' | 'anchor' | 'network' | 'about'>('storage');
@@ -118,10 +119,11 @@ export function SettingsPage() {
     try {
       await settingsApi.updateSettings(payload);
       setSettings(payload);
-      // Optional: Add a toast notification here
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error('Failed to save settings:', err);
-      setError('Failed to save settings.');
+      setError('Failed to save settings. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -163,6 +165,13 @@ export function SettingsPage() {
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
+
+      {saveSuccess && (
+        <div className="mb-6 rounded border border-green-200 bg-green-50 p-3 text-[14px] text-green-700 dark:border-green-900/30 dark:bg-green-900/10 dark:text-green-400 flex items-center gap-2">
+          <CheckCircle size={16} />
+          Settings saved successfully.
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 rounded border border-red-200 bg-red-50 p-3 text-[14px] text-red-600 dark:border-red-900/30 dark:bg-red-900/10 flex items-center gap-2">
@@ -481,12 +490,16 @@ export function SettingsPage() {
             </div>
 
             <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
-              {changelog ? (
+              {changelog === undefined ? (
+                <span className="text-[14px] text-gray-500">Loading changelog...</span>
+              ) : changelog === '' ? (
+                <span className="text-[14px] text-[#73726F] dark:text-[#C4C4C4]">
+                  Changelog is not available in this build.
+                </span>
+              ) : (
                 <div className="font-sans leading-relaxed">
                   {renderMarkdown(changelog)}
                 </div>
-              ) : (
-                <span className="text-[14px] text-gray-500">Loading changelog...</span>
               )}
             </div>
           </div>
