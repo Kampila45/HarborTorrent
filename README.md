@@ -45,11 +45,10 @@ HarborTorrent bundles the backend as a Tauri sidecar binary, so it ships as a si
 | Operating System | Architecture | Package Formats |
 |---|---|---|
 | Windows 10/11 | x64 | `.msi`, `.exe` (NSIS) |
-| Windows 11 | ARM64 | `.msi`, `.exe` (NSIS) |
 | Ubuntu 20.04+ / Debian | x64 | `.deb`, `.AppImage` |
-| Ubuntu 22.04+ / Debian | ARM64 | `.deb`, `.AppImage` |
 | Fedora 38+ / RHEL | x64 | `.rpm`, `.AppImage` |
-| Fedora 38+ / RHEL | ARM64 | `.rpm`, `.AppImage` |
+
+> **ARM64 support (Windows and Linux) is planned for a future release.** Installers for ARM64 are not published in the current release.
 
 ---
 
