@@ -155,11 +155,19 @@ internal sealed class TorrentLifecycleHostedService : BackgroundService
 
         var torrents = await repository.ListAllUnfilteredAsync(cancellationToken);
 
-        foreach (var torrent in torrents.Where(torrent => torrent.Status == TorrentStatus.Downloading))
+        foreach (var torrent in torrents.Where(torrent =>
+            torrent.Status is TorrentStatus.Downloading or TorrentStatus.Seeding or TorrentStatus.Paused))
         {
             try
             {
                 await _runtimeCoordinator.StartAsync(torrent.Id, cancellationToken);
+
+                // Paused torrents must be re-registered with the engine (via StartAsync),
+                // then immediately paused again to restore their intended state.
+                if (torrent.Status == TorrentStatus.Paused)
+                {
+                    await _runtimeCoordinator.PauseAsync(torrent.Id, cancellationToken);
+                }
             }
             catch (Exception exception)
             {

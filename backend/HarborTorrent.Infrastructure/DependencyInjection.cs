@@ -16,15 +16,19 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, string launchToken)
     {
-        services.AddSignalR()
+        // Register the hub filter as a singleton for DI resolution, then wire it
+        // explicitly through SignalR options. Both steps are required: the singleton
+        // registration makes the filter available for constructor injection; the
+        // AddFilter call ensures SignalR actually applies it to every hub connection.
+        services.AddSingleton(new LaunchTokenHubFilter(launchToken));
+        services.AddSignalR(options =>
+            {
+                options.AddFilter<LaunchTokenHubFilter>();
+            })
             .AddJsonProtocol(options =>
             {
                 options.PayloadSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
             });
-
-        // Register the hub filter as a singleton so SignalR resolves and applies it to all hubs.
-        // The launch token is captured in the closure from the infrastructure setup call.
-        services.AddSingleton<IHubFilter>(new LaunchTokenHubFilter(launchToken));
         services.AddSingleton<MonoTorrentRuntimeCoordinator>();
         services.AddSingleton<ITorrentRuntimeCoordinator>(serviceProvider => serviceProvider.GetRequiredService<MonoTorrentRuntimeCoordinator>());
         services.AddSingleton<ITorrentSourceMetadataProvider, MonoTorrentSourceMetadataProvider>();

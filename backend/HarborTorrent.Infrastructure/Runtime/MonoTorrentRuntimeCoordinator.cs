@@ -92,7 +92,8 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
         try
         {
-            if (_managers.TryGetValue(torrentId, out var manager) && manager.State == TorrentState.Downloading)
+            if (_managers.TryGetValue(torrentId, out var manager) &&
+                manager.State is TorrentState.Downloading or TorrentState.Seeding)
             {
                 await manager.PauseAsync();
                 await SaveEngineStateAsync();
