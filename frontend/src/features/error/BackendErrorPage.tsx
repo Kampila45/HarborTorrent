@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { RefreshCw, TerminalSquare } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 export function BackendErrorPage() {
   const imgRef = useRef<HTMLImageElement>(null);
