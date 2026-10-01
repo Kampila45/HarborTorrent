@@ -17,12 +17,16 @@ jobs:
         include:
           - platform: ubuntu-22.04
             dotnet-rid: linux-x64
+            args: ''
           - platform: ubuntu-22.04-arm
             dotnet-rid: linux-arm64
+            args: '--target aarch64-unknown-linux-gnu'
           - platform: windows-latest
             dotnet-rid: win-x64
+            args: ''
           - platform: windows-11-arm
             dotnet-rid: win-arm64
+            args: '--target aarch64-pc-windows-msvc'
 
     runs-on: ${{ matrix.platform }}
 
@@ -107,6 +111,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           projectPath: frontend
+          args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
           releaseName: 'HarborTorrent ${{ github.ref_name }}'
           releaseBody: |
