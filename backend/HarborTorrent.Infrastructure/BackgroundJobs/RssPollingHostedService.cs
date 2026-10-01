@@ -140,6 +140,19 @@ internal sealed class RssPollingHostedService : BackgroundService
                         if (result.IsSuccess)
                         {
                             await repository.AddItemHistoryAsync(new RssFeedItemHistory(Guid.NewGuid(), feed.Id, filter.Id, identifier), cancellationToken);
+
+                            // Automatically start the download so matched torrents begin immediately.
+                            // Failure to start is non-fatal: the torrent is already in the library
+                            // and can be started manually.
+                            try
+                            {
+                                var startCommand = new HarborTorrent.Application.Features.Torrents.StartTorrent.StartTorrentCommand(result.Value.Id);
+                                await mediator.Send(startCommand, cancellationToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "RSS-matched torrent {TorrentId} was added but could not be started automatically.", result.Value.Id);
+                            }
                         }
                         else
                         {

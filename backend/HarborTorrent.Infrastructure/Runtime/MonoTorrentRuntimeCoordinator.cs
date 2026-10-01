@@ -428,11 +428,29 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
     {
         Directory.CreateDirectory(torrent.SavePath);
 
+        // Read user preferences so per-manager settings (PEX, DHT) match what is configured.
+        // These must be set at creation time because MonoTorrent applies them per-manager,
+        // not globally. Fall back to safe defaults if the repository call fails.
+        bool allowPex = true;
+        bool allowDht = true;
+        try
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
+            var settingsRepo = scope.ServiceProvider.GetRequiredService<HarborTorrent.Application.Abstractions.Persistence.ISettingsRepository>();
+            var savedSettings = await settingsRepo.GetAsync(cancellationToken);
+            allowPex = savedSettings.EnablePex;
+            allowDht = savedSettings.EnableDht;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read settings for torrent manager creation; using defaults.");
+        }
+
         var settings = new TorrentSettingsBuilder
         {
             CreateContainingDirectory = true,
-            AllowDht = true,
-            AllowPeerExchange = true
+            AllowDht = allowDht,
+            AllowPeerExchange = allowPex
         }.ToSettings();
 
         if (torrent.Source.Kind == TorrentSourceKind.MagnetLink)

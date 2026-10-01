@@ -1,8 +1,9 @@
-import { Activity, CheckCircle2, Folder, Gauge, List, PlayCircle } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Activity, AlertCircle, CheckCircle2, Folder, Gauge, List, PlayCircle } from 'lucide-react';
+import { useState } from 'react';
 import { PageSkeleton } from '@/components/PageSkeleton';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useTorrentsQuery } from '@/features/torrents/hooks/useTorrentsQuery';
+import { useQuery } from '@tanstack/react-query';
+import { fetchTorrent } from '@/services/torrents.api';
 import { useTorrentFilesQuery } from '@/features/torrents/hooks/useTorrentFilesQuery';
 import { useUpdateFilePriorityMutation } from '@/features/torrents/hooks/useUpdateFilePriorityMutation';
 import { formatBytes, formatDuration, formatSpeed, toDisplayTorrentStatus } from '@/utils/formatters';
@@ -15,26 +16,43 @@ export function TorrentDetailsPage() {
   const { torrentId } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabView>('files');
-  const { data, isLoading, isError } = useTorrentsQuery();
+
+  // Fetch this specific torrent by ID so details are correct even with more than 10 torrents.
+  const { data: torrent, isLoading, isError } = useQuery({
+    queryKey: ['torrent', torrentId],
+    queryFn: () => fetchTorrent(torrentId!),
+    enabled: !!torrentId,
+  });
+
   const { data: filesData, isLoading: isLoadingFiles } = useTorrentFilesQuery(torrentId);
   const { mutate: updatePriority } = useUpdateFilePriorityMutation();
 
-  const torrent = useMemo(() => {
-    if (!data || data.items.length === 0) {
-      return null;
-    }
+  if (!torrentId) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-[#73726F]">
+          <AlertCircle size={40} />
+          <p className="text-[15px]">No torrent ID specified.</p>
+        </div>
+      </section>
+    );
+  }
 
-    if (!torrentId) {
-      return data.items[0];
-    }
-
-    return data.items.find((item) => item.id === torrentId) ?? data.items[0];
-  }, [data, torrentId]);
-
-  if (isLoading || isError || !torrent) {
+  if (isLoading) {
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
         <PageSkeleton />
+      </section>
+    );
+  }
+
+  if (isError || !torrent) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-[#73726F]">
+          <AlertCircle size={40} />
+          <p className="text-[15px]">Torrent not found.</p>
+        </div>
       </section>
     );
   }
