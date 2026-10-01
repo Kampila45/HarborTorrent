@@ -66,7 +66,6 @@ Please follow these rules to keep the codebase consistent.
 - Use `required` properties and `init`-only setters on DTOs and response contracts.
 - Commands and queries must be `sealed record` types. Handlers must be `sealed class` types.
 - Do not use `var` where the type is not obvious from the right-hand side.
-- Comments are written in the third person. Do not use "we" or "our" in comments.
 - Do not log secrets — specifically, never log the launch token.
 
 ### Frontend (TypeScript / React)
@@ -74,7 +73,6 @@ Please follow these rules to keep the codebase consistent.
 - Feature code belongs in `src/features/<feature>/`. Do not add feature logic to `src/app/`.
 - Global state is managed via Zustand stores in `src/store/`. Do not use React context for global state.
 - API calls are wrapped in feature-scoped `hooks/` using TanStack Query.
-- Comments are written in the third person. Do not use "we" or "our" in comments.
 - TypeScript strict mode is enabled. All code must pass `npx tsc --noEmit` with no errors.
 
 ---
