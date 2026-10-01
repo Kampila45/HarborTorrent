@@ -144,14 +144,15 @@ internal sealed class RssPollingHostedService : BackgroundService
                             // Automatically start the download so matched torrents begin immediately.
                             // Failure to start is non-fatal: the torrent is already in the library
                             // and can be started manually.
+                            var addedTorrentId = result.Value!.Id;
                             try
                             {
-                                var startCommand = new HarborTorrent.Application.Features.Torrents.StartTorrent.StartTorrentCommand(result.Value.Id);
+                                var startCommand = new HarborTorrent.Application.Features.Torrents.StartTorrent.StartTorrentCommand(addedTorrentId);
                                 await mediator.Send(startCommand, cancellationToken);
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "RSS-matched torrent {TorrentId} was added but could not be started automatically.", result.Value.Id);
+                                _logger.LogWarning(ex, "RSS-matched torrent {TorrentId} was added but could not be started automatically.", addedTorrentId);
                             }
                         }
                         else
