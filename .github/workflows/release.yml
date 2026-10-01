@@ -18,15 +18,9 @@ jobs:
           - platform: ubuntu-22.04
             dotnet-rid: linux-x64
             args: ''
-          - platform: ubuntu-22.04-arm
-            dotnet-rid: linux-arm64
-            args: '--target aarch64-unknown-linux-gnu'
           - platform: windows-latest
             dotnet-rid: win-x64
             args: ''
-          - platform: windows-11-arm
-            dotnet-rid: win-arm64
-            args: '--target aarch64-pc-windows-msvc'
 
     runs-on: ${{ matrix.platform }}
 
@@ -125,9 +119,7 @@ jobs:
             | Platform | File |
             |---|---|
             | Windows x64 | `.msi` or `.exe` setup installer |
-            | Windows ARM64 | `.msi` or `.exe` setup installer |
             | Linux x64 | `.AppImage` (portable), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL) |
-            | Linux ARM64 | `.AppImage` (portable), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL) |
 
             > **RPM installation:** `sudo rpm -i HarborTorrent-*.rpm` or `sudo dnf install ./HarborTorrent-*.rpm`
 
