@@ -129,7 +129,7 @@ jobs:
 
             ### Verifying downloads
             SHA-256 checksums for all release assets are available in `checksums.sha256.txt`.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
 
       # ── 8. Generate SHA-256 checksums for all release assets ─────────────
