@@ -48,7 +48,6 @@ HarborTorrent bundles the backend as a Tauri sidecar binary, so it ships as a si
 | Ubuntu 20.04+ / Debian | x64 | `.deb`, `.AppImage` |
 | Fedora 38+ / RHEL | x64 | `.rpm`, `.AppImage` |
 
-> **ARM64 support (Windows and Linux) is planned for a future release.** Installers for ARM64 are not published in the current release.
 
 ---
 
