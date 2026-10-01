@@ -152,7 +152,12 @@ export function DownloadsPage() {
                     </span>
                     <div className="inline-flex items-center gap-1">
                       {status === 'Error' ? (
-                        <button type="button" className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7]" aria-label="Retry">
+                        <button
+                          type="button"
+                          className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7]"
+                          onClick={() => startMutation.mutate(item.id)}
+                          aria-label="Retry"
+                        >
                           <RefreshCw size={16} />
                         </button>
                       ) : (
@@ -222,7 +227,12 @@ export function DownloadsPage() {
                       <td className="px-3 py-5 text-right">
                         <div className="inline-flex items-center justify-end gap-1">
                           {status === 'Error' ? (
-                            <button type="button" className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-white dark:bg-[#111111]" aria-label="Retry torrent">
+                            <button
+                              type="button"
+                              className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-white dark:bg-[#111111]"
+                              onClick={() => startMutation.mutate(item.id)}
+                              aria-label="Retry torrent"
+                            >
                               <RefreshCw size={18} />
                             </button>
                           ) : (
