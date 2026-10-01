@@ -185,8 +185,8 @@ pub fn run() {
         .run(|app, event| {
             // Kill the sidecar when the application exits so no orphaned process remains.
             if let RunEvent::Exit = event {
-                let handle_state = app.state::<SidecarHandle>();
-                if let Some(child) = handle_state.0.lock().unwrap().take() {
+                let child_opt = app.state::<SidecarHandle>().0.lock().unwrap().take();
+                if let Some(child) = child_opt {
                     let _ = child.kill();
                     println!("[HarborTorrent] API sidecar stopped.");
                 }
