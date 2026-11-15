@@ -4,7 +4,7 @@ A cross-platform desktop torrent management client for **Windows** and **Linux**
 
 HarborTorrent bundles the backend as a Tauri sidecar binary, so it ships as a single native desktop application — no separate server setup required.
 
-![HarborTorrent Demo](docs/assets/demo.webp)
+https://github.com/user-attachments/assets/9206c506-4f6d-4efe-aca3-6ca289cbb582
 
 ---
 
