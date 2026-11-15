@@ -4,4 +4,5 @@
   <Project Path="HarborTorrent.Domain/HarborTorrent.Domain.csproj" />
   <Project Path="HarborTorrent.Infrastructure/HarborTorrent.Infrastructure.csproj" />
   <Project Path="HarborTorrent.Persistence/HarborTorrent.Persistence.csproj" />
+  <Project Path="HarborTorrent.Tests/HarborTorrent.Tests.csproj" />
 </Solution>

@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <InternalsVisibleTo Include="HarborTorrent.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\HarborTorrent.Application\HarborTorrent.Application.csproj" />
     <ProjectReference Include="..\HarborTorrent.Domain\HarborTorrent.Domain.csproj" />
   </ItemGroup>
