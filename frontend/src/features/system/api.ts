@@ -1,22 +1,18 @@
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: 'http://127.0.0.1:5000/api/v1/system',
-});
+import { httpClient } from '@/services/http';
 
 export interface VersionInfo {
   version: string;
-  latestVersion: string;
+  latestVersion?: string;
 }
 
 export const systemApi = {
   getChangelog: async (): Promise<string> => {
-    const response = await api.get<{ changelog: string }>('/changelog');
+    const response = await httpClient.get<{ changelog: string }>('/system/changelog');
     return response.data.changelog;
   },
 
   getVersion: async (): Promise<VersionInfo> => {
-    const response = await api.get<VersionInfo>('/version');
+    const response = await httpClient.get<VersionInfo>('/system/version');
     return response.data;
   },
 };

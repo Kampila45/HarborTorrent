@@ -4,8 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchTorrents } from '@/services/torrents.api';
 import { useSound } from '@/hooks/useSound';
 
-import { sendNotification, isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
-
 export function GlobalNotificationListener() {
   const { playChime } = useSound();
   const previousStatusRef = useRef<Record<string, string>>({});
@@ -13,12 +11,25 @@ export function GlobalNotificationListener() {
   // Request notification permission on mount
   useEffect(() => {
     async function setupNotifications() {
-      const granted = await isPermissionGranted();
-      if (!granted) {
-        await requestPermission();
+      if ('__TAURI_INTERNALS__' in window) {
+        try {
+          const { isPermissionGranted, requestPermission } = await import('@tauri-apps/plugin-notification');
+          const granted = await isPermissionGranted();
+          if (!granted) {
+            await requestPermission();
+          }
+        } catch (err) {
+          console.error('Failed to setup Tauri notifications:', err);
+        }
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        try {
+          await Notification.requestPermission();
+        } catch {
+          // Ignore browser notification permission restrictions
+        }
       }
     }
-    setupNotifications();
+    void setupNotifications();
   }, []);
 
   // Poll all torrents every 2 seconds to detect status changes
@@ -53,6 +64,7 @@ export function GlobalNotificationListener() {
         try {
           if ('__TAURI_INTERNALS__' in window) {
             // Tauri Native Notification
+            const { isPermissionGranted, sendNotification } = await import('@tauri-apps/plugin-notification');
             const granted = await isPermissionGranted();
             if (granted) {
               sendNotification({

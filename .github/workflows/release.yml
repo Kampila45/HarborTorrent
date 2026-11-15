@@ -1,6 +1,6 @@
 name: Release
 
-# Triggers when a version tag is pushed: git tag v1.0.1 && git push origin v1.0.1
+# Triggers when a version tag is pushed: git tag v1.0.3 && git push origin v1.0.3
 on:
   push:
     tags:
@@ -27,12 +27,10 @@ jobs:
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout repository
-        # actions/checkout@v4.2.2 — pinned to immutable SHA
         uses: actions/checkout@v4.2.2
 
       # ── 2. Check version consistency ─────────────────────────────────────────
       - name: Setup Node.js (for version check)
-        # actions/setup-node@v4.4.0 — pinned to immutable SHA
         uses: actions/setup-node@v4.4.0
         with:
           node-version: '20'
@@ -47,12 +45,14 @@ jobs:
         run: node scripts/check-versions.mjs
         working-directory: frontend
 
-      # ── 3. Build .NET sidecar ─────────────────────────────────────────────
+      # ── 3. Test and build .NET sidecar ─────────────────────────────────────
       - name: Setup .NET 10
-        # actions/setup-dotnet@v4.3.1 — pinned to immutable SHA
         uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: '10.x'
+
+      - name: Run backend tests
+        run: dotnet test backend/HarborTorrent.slnx --configuration Release --verbosity normal
 
       - name: Publish .NET API sidecar
         shell: bash
@@ -70,11 +70,9 @@ jobs:
 
       # ── 4. Rust setup ─────────────────────────────────────────────────────
       - name: Setup Rust
-        # dtolnay/rust-toolchain@stable — pinned to immutable SHA
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build artifacts
-        # swatinem/rust-cache@v2.7.8 — pinned to immutable SHA
         uses: swatinem/rust-cache@v2.7.8
         with:
           workspaces: frontend/src-tauri -> target
@@ -96,9 +94,8 @@ jobs:
             patchelf \
             rpm
 
-      # ── 7. Build Tauri app & publish to GitHub Release ───────────────────
+      # ── 7. Build Tauri app & upload to draft GitHub Release ──────────────
       - name: Build and release Tauri app
-        # tauri-apps/tauri-action@v0.5.18 — pinned to immutable SHA
         uses: tauri-apps/tauri-action@v0.5.18
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -111,7 +108,7 @@ jobs:
           releaseBody: |
             ## What's new in ${{ github.ref_name }}
 
-            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/backend/CHANGELOG.md) for full details.
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/backend/CHANGELOG.md) for full details.
 
             ---
 
@@ -129,34 +126,82 @@ jobs:
 
             ### Verifying downloads
             SHA-256 checksums for all release assets are available in `checksums.sha256.txt`.
-          releaseDraft: false
+            To verify only the installer you downloaded:
+            `sha256sum --ignore-missing --check checksums.sha256.txt`
+          releaseDraft: true
           prerelease: false
 
-      # ── 8. Generate SHA-256 checksums for all release assets ─────────────
-      - name: Generate SHA-256 checksums (Linux)
+      # ── 8. Stage distributable installers for combined checksum manifest ──
+      - name: Stage release installers (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          find frontend/src-tauri/target -maxdepth 4 \
+          mkdir -p staged-assets
+          find frontend/src-tauri/target/release/bundle -maxdepth 3 -type f \
             \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
-            -exec sha256sum {} \; >> checksums.sha256.txt || true
+            -exec cp -t staged-assets {} +
+          ls -la staged-assets
 
-      - name: Generate SHA-256 checksums (Windows)
+      - name: Stage release installers (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Get-ChildItem -Path frontend\src-tauri\target -Recurse -Include "*.msi","*.exe","*.nsis" |
-            ForEach-Object {
-              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-              "$hash  $($_.Name)" | Out-File -Append checksums.sha256.txt
-            }
+          New-Item -ItemType Directory -Force -Path staged-assets | Out-Null
+          Get-ChildItem -Path frontend\src-tauri\target\release\bundle -Recurse -File -Include "*.msi","*.exe" |
+            Copy-Item -Destination staged-assets
+          Get-ChildItem staged-assets
 
-      - name: Upload checksums to release
-        if: hashFiles('checksums.sha256.txt') != ''
-        # softprops/action-gh-release@v2.3.2 — pinned to immutable SHA
+      - name: Upload staged installers for checksum aggregation
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: release-assets-${{ matrix.dotnet-rid }}
+          path: staged-assets/*
+          if-no-files-found: error
+
+  finalize-release:
+    needs: build-and-release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all staged platform assets
+        uses: actions/download-artifact@v4.3.0
+        with:
+          pattern: release-assets-*
+          path: staged-artifacts
+          merge-multiple: false
+
+      - name: Generate deterministic SHA-256 checksum manifest
+        shell: bash
+        run: |
+          mkdir -p all-assets
+          while IFS= read -r -d '' file; do
+            base="$(basename "$file")"
+            if [ -e "all-assets/$base" ]; then
+              echo "Error: Duplicate release asset filename detected: $base" >&2
+              exit 1
+            fi
+            cp "$file" "all-assets/$base"
+          done < <(find staged-artifacts -type f -print0)
+
+          cd all-assets
+          shopt -s nullglob
+          files=(*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Error: No release assets found for checksum generation." >&2
+            exit 1
+          fi
+          LC_ALL=C sha256sum "${files[@]}" > ../checksums.sha256.txt
+          cd ..
+          cat checksums.sha256.txt
+
+      - name: Upload checksums and publish release
         uses: softprops/action-gh-release@v2.3.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: checksums.sha256.txt
           tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false

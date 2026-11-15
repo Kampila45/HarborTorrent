@@ -3,6 +3,12 @@ import { check } from '@tauri-apps/plugin-updater';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
+export interface UpdateCheckResult {
+  available: boolean;
+  version?: string;
+  notes?: string | undefined;
+}
+
 export function useSystemUpdater() {
   const navigate = useNavigate();
 
@@ -14,7 +20,6 @@ export function useSystemUpdater() {
       try {
         const update = await check();
         if (update && mounted) {
-          // Notify the user an update is available on startup
           toast('Update Available', {
             description: `Version ${update.version} is ready to install.`,
             action: {
@@ -34,14 +39,31 @@ export function useSystemUpdater() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [navigate]);
 }
 
-// Helper to manually trigger an update
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  if (!('__TAURI_INTERNALS__' in window)) {
+    throw new Error('Automatic updates are only supported in the native desktop app.');
+  }
+
+  const update = await check();
+  if (!update) {
+    return { available: false };
+  }
+
+  return {
+    available: true,
+    version: update.version,
+    notes: update.body ?? undefined,
+  };
+}
+
 export async function triggerManualUpdate(
   setIsUpdating: (val: boolean) => void,
   setUpdateProgress: (val: number) => void,
-  setUpdateComplete: (val: boolean) => void
+  setUpdateComplete: (val: boolean) => void,
+  setUpdateError?: (val: string | null) => void
 ) {
   if (!('__TAURI_INTERNALS__' in window)) {
     toast.info('Browser Mode', {
@@ -49,39 +71,55 @@ export async function triggerManualUpdate(
     });
     return;
   }
-  
+
+  setUpdateError?.(null);
+  setUpdateProgress(0);
+  setUpdateComplete(false);
+
   try {
     const update = await check();
-    if (update) {
-      setIsUpdating(true);
-      let downloaded = 0;
-      let contentLength = 0;
-
-      await update.downloadAndInstall((event) => {
-        switch (event.event) {
-          case 'Started':
-            contentLength = event.data.contentLength || 0;
-            break;
-          case 'Progress':
-            downloaded += event.data.chunkLength;
-            if (contentLength > 0) {
-              const pct = Math.round((downloaded / contentLength) * 100);
-              setUpdateProgress(pct);
-            }
-            break;
-          case 'Finished':
-            setUpdateProgress(100);
-            setUpdateComplete(true);
-            break;
-        }
-      });
-    } else {
+    if (!update) {
       toast.info('You are up to date!', {
         description: 'No new updates are available at this time.',
       });
+      return;
     }
+
+    setIsUpdating(true);
+    let downloaded = 0;
+    let contentLength = 0;
+
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case 'Started':
+          contentLength = event.data.contentLength || 0;
+          break;
+        case 'Progress':
+          downloaded += event.data.chunkLength;
+          if (contentLength > 0) {
+            const pct = Math.min(99, Math.round((downloaded / contentLength) * 100));
+            setUpdateProgress(pct);
+          }
+          break;
+        case 'Finished':
+          setUpdateProgress(100);
+          break;
+      }
+    });
+
+    // Only mark installation complete after downloadAndInstall resolves without throwing.
+    setUpdateProgress(100);
+    setUpdateComplete(true);
+    setIsUpdating(false);
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Update download or installation failed.';
     console.error('Update failed:', err);
     setIsUpdating(false);
+    setUpdateProgress(0);
+    setUpdateComplete(false);
+    setUpdateError?.(message);
+    toast.error('Update Failed', {
+      description: message,
+    });
   }
 }

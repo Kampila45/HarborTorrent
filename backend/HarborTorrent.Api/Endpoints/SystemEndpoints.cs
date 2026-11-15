@@ -16,8 +16,15 @@ internal static class SystemEndpoints
 
         group.MapGet("/changelog", GetChangelogAsync);
         group.MapGet("/version", GetVersionAsync);
+        group.MapPost("/shutdown", ShutdownAsync);
 
         return app;
+    }
+
+    private static Task<IResult> ShutdownAsync(IHostApplicationLifetime lifetime)
+    {
+        lifetime.StopApplication();
+        return Task.FromResult(Results.Accepted());
     }
 
     private static async Task<IResult> GetChangelogAsync(ISender sender, CancellationToken cancellationToken)
@@ -28,8 +35,8 @@ internal static class SystemEndpoints
 
     private static Task<IResult> GetVersionAsync()
     {
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
-        return Task.FromResult(Results.Ok(new { version = version, latestVersion = version }));
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.3";
+        return Task.FromResult(Results.Ok(new { version }));
     }
 
 }
