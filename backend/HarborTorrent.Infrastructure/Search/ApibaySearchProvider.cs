@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using HarborTorrent.Application.Abstractions.Search;
 using HarborTorrent.Application.Contracts.Search;
+using HarborTorrent.Domain.Torrents;
 using Microsoft.Extensions.Logging;
 
 namespace HarborTorrent.Infrastructure.Search;
@@ -43,19 +44,15 @@ internal sealed class ApibaySearchProvider : ITorrentSearchProvider
             // Apibay returns a dummy entry if nothing is found (id = "0")
             return apiResults
                 .Where(r => r.Id != "0" && !string.IsNullOrWhiteSpace(r.InfoHash))
-                .Select(r => 
-                {
-                    var encodedTrackers = "&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A80&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Fglotorrents.pw%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce";
-                    return new SearchResultDto(
-                        Title: r.Name ?? "Unknown",
-                        InfoHash: r.InfoHash!,
-                        SizeBytes: long.TryParse(r.Size, out var size) ? size : 0,
-                        Seeders: int.TryParse(r.Seeders, out var seeders) ? seeders : 0,
-                        Leechers: int.TryParse(r.Leechers, out var leechers) ? leechers : 0,
-                        ProviderName: Name,
-                        MagnetUri: $"magnet:?xt=urn:btih:{r.InfoHash}&dn={Uri.EscapeDataString(r.Name ?? "Unknown")}{encodedTrackers}"
-                    );
-                });
+                .Select(r => new SearchResultDto(
+                    Title: r.Name ?? "Unknown",
+                    InfoHash: r.InfoHash!,
+                    SizeBytes: long.TryParse(r.Size, out var size) ? size : 0,
+                    Seeders: int.TryParse(r.Seeders, out var seeders) ? seeders : 0,
+                    Leechers: int.TryParse(r.Leechers, out var leechers) ? leechers : 0,
+                    ProviderName: Name,
+                    MagnetUri: TorrentSource.BuildMagnetUri(r.InfoHash!, r.Name)
+                ));
         }
         catch (Exception ex)
         {

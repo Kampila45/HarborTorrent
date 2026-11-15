@@ -1,4 +1,5 @@
 using HarborTorrent.Application.Abstractions.Realtime;
+using HarborTorrent.Application.Abstractions.Rss;
 using HarborTorrent.Application.Abstractions.Runtime;
 using HarborTorrent.Application.Abstractions.Torrents;
 using HarborTorrent.Infrastructure.Realtime;
@@ -35,8 +36,16 @@ public static class DependencyInjection
         services.AddScoped<ITorrentEventPublisher, SignalRTorrentEventPublisher>();
         services.AddScoped<ISystemEventPublisher, SystemEventPublisher>();
         services.AddHostedService<TorrentLifecycleHostedService>();
-        services.AddHostedService<HarborTorrent.Infrastructure.BackgroundJobs.RssPollingHostedService>();
+        services.AddSingleton<IRssPollStatusTracker, HarborTorrent.Infrastructure.BackgroundJobs.RssPollStatusTracker>();
+        services.AddSingleton<HarborTorrent.Infrastructure.BackgroundJobs.RssPollingHostedService>();
+        services.AddSingleton<IRssFeedPoller>(sp => sp.GetRequiredService<HarborTorrent.Infrastructure.BackgroundJobs.RssPollingHostedService>());
+        services.AddHostedService(sp => sp.GetRequiredService<HarborTorrent.Infrastructure.BackgroundJobs.RssPollingHostedService>());
         
+        services.AddHttpClient("Rss", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+
         services.AddHttpClient<ApibaySearchProvider>();
         services.AddScoped<ITorrentSearchProvider>(sp => sp.GetRequiredService<ApibaySearchProvider>());
 

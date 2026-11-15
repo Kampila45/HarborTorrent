@@ -23,7 +23,9 @@ internal sealed class RssFeedRepository : IRssFeedRepository
 
     public async Task<RssFeed?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.RssFeeds.FindAsync(new object[] { id }, cancellationToken);
+        return await _dbContext.RssFeeds
+            .Include(f => f.Filters)
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
     }
 
     public async Task AddAsync(RssFeed feed, CancellationToken cancellationToken = default)

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addRssFeed, addRssFilter, deleteRssFeed, deleteRssFilter, fetchRssFeeds } from '@/services/rss.api';
+import { addRssFeed, addRssFilter, deleteRssFeed, deleteRssFilter, fetchRssFeeds, pollRssFeed } from '@/services/rss.api';
 
 export function useRssQueries() {
   return useQuery({
@@ -12,11 +12,20 @@ export function useRssQueries() {
 export function useRssActions() {
   const queryClient = useQueryClient();
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['rssFeeds'] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['rssFeeds'] });
+    void queryClient.invalidateQueries({ queryKey: ['torrents'] });
+    void queryClient.invalidateQueries({ queryKey: ['dashboardMetrics'] });
+  };
+
+  const invalidateWithFollowUp = () => {
+    invalidate();
+    window.setTimeout(invalidate, 1500);
+  };
 
   const addFeedMutation = useMutation({
     mutationFn: addRssFeed,
-    onSuccess: invalidate,
+    onSuccess: invalidateWithFollowUp,
   });
 
   const deleteFeedMutation = useMutation({
@@ -24,9 +33,14 @@ export function useRssActions() {
     onSuccess: invalidate,
   });
 
+  const pollFeedMutation = useMutation({
+    mutationFn: pollRssFeed,
+    onSuccess: invalidate,
+  });
+
   const addFilterMutation = useMutation({
     mutationFn: ({ feedId, input }: { feedId: string; input: { regexPattern: string; savePath: string } }) => addRssFilter(feedId, input),
-    onSuccess: invalidate,
+    onSuccess: invalidateWithFollowUp,
   });
 
   const deleteFilterMutation = useMutation({
@@ -34,5 +48,5 @@ export function useRssActions() {
     onSuccess: invalidate,
   });
 
-  return { addFeedMutation, deleteFeedMutation, addFilterMutation, deleteFilterMutation };
+  return { addFeedMutation, deleteFeedMutation, pollFeedMutation, addFilterMutation, deleteFilterMutation };
 }

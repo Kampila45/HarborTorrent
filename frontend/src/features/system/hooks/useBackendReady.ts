@@ -1,34 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { resolveSessionConfig } from '@/services/session';
 
 type ReadyState = 'loading' | 'ready' | 'error';
 
 const POLL_INTERVAL_MS = 500;
-const MAX_ATTEMPTS = 30; // 15 seconds total at 500 ms per attempt
+const REQUEST_TIMEOUT_MS = 2000;
+const MAX_ATTEMPTS = 30; // ~15 seconds across polling intervals
+
+export type BackendReadyResult = {
+  state: ReadyState;
+  errorReason: string | null;
+  retry: () => void;
+};
 
 /**
- * Resolves the Tauri session config and then polls the backend health endpoint
- * until the API reports healthy or the maximum number of attempts is exceeded.
- *
- * Returns `loading` while the backend is starting, `ready` when it is healthy,
- * or `error` if it did not respond within the timeout window.
+ * Resolves the Tauri session config and polls the backend health endpoint
+ * with bounded per-request timeouts until the API reports healthy or the
+ * maximum number of attempts is exceeded.
  */
-export function useBackendReady(): ReadyState {
+export function useBackendReady(): BackendReadyResult {
   const [state, setState] = useState<ReadyState>('loading');
+  const [errorReason, setErrorReason] = useState<string | null>(null);
+  const [attemptEpoch, setAttemptEpoch] = useState(0);
+
+  const retry = useCallback(() => {
+    setState('loading');
+    setErrorReason(null);
+    setAttemptEpoch((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
+    let timerId: number | undefined;
 
     const poll = async () => {
-      // Resolve session config first so the health URL uses the correct port.
       let healthUrl: string;
       try {
         const session = await resolveSessionConfig();
         const baseUrl = session.apiBaseUrl.replace(/\/api\/v1\/?$/, '');
         healthUrl = `${baseUrl}/health`;
       } catch {
-        if (!cancelled) setState('error');
+        if (!cancelled) {
+          setErrorReason('Could not resolve desktop session configuration.');
+          setState('error');
+        }
         return;
       }
 
@@ -36,28 +52,40 @@ export function useBackendReady(): ReadyState {
         if (cancelled) return;
 
         if (attempts >= MAX_ATTEMPTS) {
-          if (!cancelled) setState('error');
+          if (!cancelled) {
+            setErrorReason('The background download engine did not respond within the startup timeout window.');
+            setState('error');
+          }
           return;
         }
 
         attempts++;
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
         try {
           const response = await fetch(healthUrl, {
-            // No launch token header — the health endpoint is exempt from auth.
             method: 'GET',
             cache: 'no-store',
+            signal: controller.signal,
           });
 
           if (response.ok) {
-            if (!cancelled) setState('ready');
+            if (!cancelled) {
+              setErrorReason(null);
+              setState('ready');
+            }
             return;
           }
         } catch {
-          // Network error — backend not ready yet.
+          // Network error or timeout — backend not ready yet.
+        } finally {
+          window.clearTimeout(timeoutId);
         }
 
-        setTimeout(attempt, POLL_INTERVAL_MS);
+        if (!cancelled) {
+          timerId = window.setTimeout(attempt, POLL_INTERVAL_MS);
+        }
       };
 
       attempt();
@@ -67,8 +95,11 @@ export function useBackendReady(): ReadyState {
 
     return () => {
       cancelled = true;
+      if (timerId !== undefined) {
+        window.clearTimeout(timerId);
+      }
     };
-  }, []);
+  }, [attemptEpoch]);
 
-  return state;
+  return { state, errorReason, retry };
 }
