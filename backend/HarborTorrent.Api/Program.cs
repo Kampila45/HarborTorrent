@@ -1,5 +1,6 @@
 using HarborTorrent.Api.Endpoints;
 using HarborTorrent.Api.Middleware;
+using HarborTorrent.Api.Security;
 using HarborTorrent.Application;
 using HarborTorrent.Infrastructure;
 using HarborTorrent.Infrastructure.Realtime;
@@ -12,12 +13,22 @@ var builder = WebApplication.CreateBuilder(args);
 var startedAtUtc = TimeProvider.System.GetUtcNow();
 
 // Read the launch token and port injected by the Tauri host via environment variables.
-// In local development these variables are absent, so defaults are used.
+// Only explicit Development execution may fall back to the local dev token; packaged
+// production execution must fail closed if HARBOR_LAUNCH_TOKEN is absent.
 var launchToken = Environment.GetEnvironmentVariable("HARBOR_LAUNCH_TOKEN");
 if (string.IsNullOrWhiteSpace(launchToken))
 {
-    launchToken = "dev-token-only";
+    if (builder.Environment.IsDevelopment())
+    {
+        launchToken = "dev-token-only";
+    }
+    else
+    {
+        throw new InvalidOperationException(
+            "HARBOR_LAUNCH_TOKEN environment variable is required in non-Development environments.");
+    }
 }
+
 var portString = Environment.GetEnvironmentVariable("HARBOR_API_PORT");
 var apiPort = int.TryParse(portString, out var parsed) ? parsed : 5000;
 
@@ -32,6 +43,7 @@ builder.Services.AddApplication();
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddInfrastructure(builder.Configuration, launchToken);
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(sp => new StreamTokenService(launchToken, sp.GetRequiredService<TimeProvider>()));
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
@@ -42,29 +54,17 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        if (builder.Environment.IsDevelopment())
-        {
-            // In development the Vite dev server and Tauri dev WebView use various origins.
-            policy.WithOrigins(
-                    "http://localhost:5173",
-                    "http://localhost:1420",
-                    "http://tauri.localhost",
-                    "tauri://localhost")
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .AllowCredentials();
-        }
-        else
-        {
-            // In production only the packaged Tauri WebView origin is permitted.
-            // On Linux the WebView origin is http://tauri.localhost; on Windows/macOS it is tauri://localhost.
-            policy.WithOrigins(
-                    "http://tauri.localhost",
-                    "tauri://localhost")
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .AllowCredentials();
-        }
+        // The packaged Tauri WebView origin is http://tauri.localhost on Linux and
+        // tauri://localhost on Windows/macOS. The Vite dev-server origins are also
+        // permitted so `tauri dev` can reach a Release-built sidecar.
+        policy.WithOrigins(
+                "http://localhost:5173",
+                "http://localhost:1420",
+                "http://tauri.localhost",
+                "tauri://localhost")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -78,7 +78,9 @@ app.UseCors();
 
 // Enforce launch token authentication on all requests except /health.
 // This must come after exception handling so that auth failures produce a structured response.
-app.UseMiddleware<LaunchTokenAuthenticationMiddleware>(launchToken);
+app.UseMiddleware<LaunchTokenAuthenticationMiddleware>(
+    launchToken,
+    app.Services.GetRequiredService<StreamTokenService>());
 
 // HTTPS redirect is omitted — this is a local sidecar that only listens on HTTP localhost.
 // There is no certificate, no external traffic, and no reason to redirect.
@@ -133,12 +135,40 @@ app.MapRssEndpoints();
 app.MapHub<TorrentHub>("/hubs/torrents");
 app.MapHub<HarborTorrent.Infrastructure.Realtime.SystemHub>("/hubs/system");
 
-using (var scope = app.Services.CreateScope())
+FileStream? instanceLock = null;
+if (!app.Configuration.GetValue<bool>("HarborTorrent:DisableInstanceLock"))
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<HarborDbContext>();
-    await dbContext.Database.MigrateAsync();
+    var lockDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "HarborTorrent");
+    Directory.CreateDirectory(lockDirectory);
+    var lockPath = Path.Combine(lockDirectory, "harbor.lock");
+
+    try
+    {
+        instanceLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    }
+    catch (IOException ex)
+    {
+        throw new InvalidOperationException(
+            $"Another HarborTorrent instance is already running (lock held at '{lockPath}').",
+            ex);
+    }
 }
 
-app.Run();
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<HarborDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+
+    app.Run();
+}
+finally
+{
+    instanceLock?.Dispose();
+}
 
 public partial class Program;
