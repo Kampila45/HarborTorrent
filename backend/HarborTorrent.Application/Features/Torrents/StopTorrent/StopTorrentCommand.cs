@@ -45,7 +45,12 @@ internal sealed class StopTorrentCommandHandler : IRequestHandler<StopTorrentCom
             return Result<TorrentDto>.Failure(stopResult.Errors);
         }
 
-        await _runtimeCoordinator.StopAsync(torrent.Id, cancellationToken);
+        var runtimeResult = await _runtimeCoordinator.StopAsync(torrent.Id, cancellationToken);
+        if (runtimeResult.IsFailure)
+        {
+            return Result<TorrentDto>.Failure(runtimeResult.Errors);
+        }
+
         await _torrentRepository.SaveChangesAsync(cancellationToken);
 
         var dto = torrent.ToDto();

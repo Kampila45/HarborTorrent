@@ -1,22 +1,36 @@
 using HarborTorrent.Application.Abstractions.Persistence;
 using HarborTorrent.Application.Abstractions.Runtime;
+using HarborTorrent.Domain.Common;
+using DomainError = HarborTorrent.Domain.Common.Error;
 using HarborTorrent.Domain.Torrents;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MonoTorrent;
 using MonoTorrent.Client;
+using MonoTorrent.PiecePicking;
+using MonoTorrent.PieceWriter;
+using MonoTorrent.Streaming;
 using System.Net;
 
 namespace HarborTorrent.Infrastructure.Runtime;
 
 public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, IDisposable
 {
+    internal const int DefaultEngineMaxConnections = 500;
+    internal const int DefaultMaxHalfOpenConnections = 60;
+    internal const int DefaultDiskCacheBytes = 32 * 1024 * 1024;
+    internal const int DefaultTorrentMaxConnections = 200;
+    internal const int DefaultTorrentUploadSlots = 12;
+    internal static readonly TimeSpan DefaultStaleRequestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(2);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<MonoTorrentRuntimeCoordinator> _logger;
     private readonly ClientEngine _engine;
     private readonly Dictionary<Guid, TorrentManager> _managers = new();
+    private readonly Dictionary<Guid, long> _sessionUploadedBaselines = new();
     private readonly string _engineStatePath;
 
     public MonoTorrentRuntimeCoordinator(
@@ -43,21 +57,45 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         _engine = CreateOrRestoreEngine(cacheDirectory, _engineStatePath);
     }
 
+    internal EngineSettings CurrentEngineSettings => _engine.Settings;
+
+    internal IReadOnlyList<int> GetTrackerTierSizes(Guid torrentId) =>
+        _managers.TryGetValue(torrentId, out var manager)
+            ? manager.TrackerManager.Tiers.Select(t => t.Trackers.Count).ToArray()
+            : [];
+
     public async Task UpdateEngineSettingsAsync(HarborTorrent.Domain.Settings.GlobalSettings settings, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            var downloadLimit = settings.AnchorModeEnabled
+                ? settings.AnchorMaxDownloadSpeedBytes
+                : settings.MaxDownloadSpeedBytes;
+            var uploadLimit = settings.AnchorModeEnabled
+                ? settings.AnchorMaxUploadSpeedBytes
+                : settings.MaxUploadSpeedBytes;
+
             var engineSettings = _engine.Settings;
             var builder = new EngineSettingsBuilder(engineSettings)
             {
-                MaximumDownloadRate = settings.AnchorModeEnabled ? (int)settings.AnchorMaxDownloadSpeedBytes : (int)settings.MaxDownloadSpeedBytes,
-                MaximumUploadRate = settings.AnchorModeEnabled ? (int)settings.AnchorMaxUploadSpeedBytes : (int)settings.MaxUploadSpeedBytes,
+                MaximumDownloadRate = ToEngineRate(downloadLimit),
+                MaximumUploadRate = ToEngineRate(uploadLimit),
                 AllowLocalPeerDiscovery = settings.EnableLpd,
-                DhtEndPoint = settings.EnableDht ? new IPEndPoint(IPAddress.Any, 0) : null
+                DhtEndPoint = settings.EnableDht
+                    ? (engineSettings.DhtEndPoint ?? new IPEndPoint(IPAddress.Any, 0))
+                    : null
             };
+            ApplyPerformanceDefaults(builder);
 
             await _engine.UpdateSettingsAsync(builder.ToSettings());
+
+            foreach (var manager in _managers.Values)
+            {
+                var managerSettings = BuildTorrentSettings(manager.Settings, settings.EnableDht, settings.EnablePex);
+                await manager.UpdateSettingsAsync(managerSettings);
+            }
+
             await SaveEngineStateAsync();
         }
         finally
@@ -66,7 +104,12 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         }
     }
 
-    public async Task StartAsync(Guid torrentId, CancellationToken cancellationToken)
+    internal static int ToEngineRate(long bytesPerSecond)
+    {
+        return (int)Math.Clamp(bytesPerSecond, 0, int.MaxValue);
+    }
+
+    public async Task<Result> StartAsync(Guid torrentId, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(CancellationToken.None);
 
@@ -79,6 +122,22 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
                 await manager.StartAsync();
                 await SaveEngineStateAsync();
             }
+
+            if (manager.State == TorrentState.Error)
+            {
+                return Result.Failure(DomainError.Conflict("Torrent engine failed to start transfer."));
+            }
+
+            return Result.Success();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start torrent {TorrentId} in engine.", torrentId);
+            return Result.Failure(DomainError.Conflict($"Torrent engine failed to start transfer: {ex.Message}"));
         }
         finally
         {
@@ -86,18 +145,39 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         }
     }
 
-    public async Task PauseAsync(Guid torrentId, CancellationToken cancellationToken)
+    public async Task<Result> PauseAsync(Guid torrentId, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(CancellationToken.None);
 
         try
         {
-            if (_managers.TryGetValue(torrentId, out var manager) &&
-                manager.State is TorrentState.Downloading or TorrentState.Seeding)
+            if (!_managers.TryGetValue(torrentId, out var manager))
+            {
+                return Result.Success();
+            }
+
+            if (manager.State is TorrentState.Downloading or TorrentState.Seeding or TorrentState.Hashing or TorrentState.Metadata)
             {
                 await manager.PauseAsync();
                 await SaveEngineStateAsync();
+                return Result.Success();
             }
+
+            if (manager.State is TorrentState.Paused or TorrentState.HashingPaused or TorrentState.Stopped)
+            {
+                return Result.Success();
+            }
+
+            return Result.Failure(DomainError.Conflict($"Cannot pause torrent while engine state is '{manager.State}'."));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to pause torrent {TorrentId} in engine.", torrentId);
+            return Result.Failure(DomainError.Conflict($"Torrent engine failed to pause transfer: {ex.Message}"));
         }
         finally
         {
@@ -105,21 +185,50 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         }
     }
 
-    public async Task StopAsync(Guid torrentId, CancellationToken cancellationToken)
+    public async Task<Result> StopAsync(Guid torrentId, CancellationToken cancellationToken)
     {
+        TorrentManager? manager;
         await _gate.WaitAsync(CancellationToken.None);
-
         try
         {
-            if (_managers.TryGetValue(torrentId, out var manager) && manager.State != TorrentState.Stopped)
+            if (!_managers.TryGetValue(torrentId, out manager))
             {
-                await manager.StopAsync();
-                await SaveEngineStateAsync();
+                return Result.Success();
             }
         }
         finally
         {
             _gate.Release();
+        }
+
+        try
+        {
+            if (manager.State != TorrentState.Stopped)
+            {
+                // Cap tracker stop-announce wait and keep _gate free so unrelated actions stay responsive.
+                await manager.StopAsync(StopTimeout);
+
+                await _gate.WaitAsync(CancellationToken.None);
+                try
+                {
+                    await SaveEngineStateAsync();
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+            }
+
+            return Result.Success();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to stop torrent {TorrentId} in engine.", torrentId);
+            return Result.Failure(DomainError.Conflict($"Torrent engine failed to stop transfer: {ex.Message}"));
         }
     }
 
@@ -134,6 +243,7 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         await _gate.WaitAsync(CancellationToken.None);
         try
         {
+            _sessionUploadedBaselines.Remove(torrentId);
             if (!_managers.Remove(torrentId, out manager))
             {
                 return;
@@ -147,7 +257,7 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         // Stop and remove outside the shared semaphore to avoid blocking callers.
         if (manager.State != TorrentState.Stopped)
         {
-            await manager.StopAsync();
+            await manager.StopAsync(StopTimeout);
         }
 
         await _engine.RemoveAsync(manager);
@@ -174,7 +284,10 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         {
             return torrentIds
                 .Where(torrentId => _managers.ContainsKey(torrentId))
-                .Select(torrentId => CreateSnapshot(torrentId, _managers[torrentId]))
+                .Select(torrentId => CreateSnapshot(
+                    torrentId,
+                    _managers[torrentId],
+                    _sessionUploadedBaselines.GetValueOrDefault(torrentId)))
                 .ToArray();
         }
         finally
@@ -258,8 +371,10 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
     public async Task<Stream?> CreateStreamAsync(Guid torrentId, int fileIndex, CancellationToken cancellationToken)
     {
+        StreamProvider? streamProvider;
+        ITorrentManagerFile? targetFile;
+
         await _gate.WaitAsync(cancellationToken);
-        
         try
         {
             var manager = await EnsureManagerAsync(torrentId, cancellationToken);
@@ -268,7 +383,11 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
                 return null;
             }
 
-            if (manager.State is TorrentState.Stopped or TorrentState.Paused or TorrentState.HashingPaused)
+            if (manager.StreamProvider == null)
+            {
+                manager = await UpgradeToStreamingManagerAsync(torrentId, manager, cancellationToken);
+            }
+            else if (manager.State is TorrentState.Stopped or TorrentState.Paused or TorrentState.HashingPaused)
             {
                 await manager.StartAsync();
                 await SaveEngineStateAsync();
@@ -279,12 +398,17 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
                 return null;
             }
 
-            return await manager.StreamProvider.CreateStreamAsync(manager.Files[fileIndex], cancellationToken);
+            streamProvider = manager.StreamProvider;
+            targetFile = manager.Files![fileIndex];
         }
         finally
         {
             _gate.Release();
         }
+
+        // Create the stream outside the shared semaphore so waiting for piece/header data
+        // does not stall unrelated torrent operations.
+        return await streamProvider.CreateStreamAsync(targetFile, cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<PeerSnapshot>> GetPeersAsync(Guid torrentId, CancellationToken cancellationToken)
@@ -330,6 +454,7 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
                 return Array.Empty<TrackerSnapshot>();
             }
 
+            var nowUtc = DateTime.UtcNow;
             return manager.TrackerManager.Tiers
                 .SelectMany(tier => tier.Trackers)
                 .Select(t => new TrackerSnapshot(
@@ -339,7 +464,7 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
                     0, 
                     t.WarningMessage,
                     t.FailureMessage,
-                    DateTime.UtcNow - t.TimeSinceLastAnnounce // TimeSinceLastAnnounce is a TimeSpan
+                    ResolveLastAnnounceUtc(t.TimeSinceLastAnnounce, nowUtc)
                 )).ToArray();
         }
         catch (Exception ex)
@@ -351,6 +476,17 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         {
             _gate.Release();
         }
+    }
+
+    internal static DateTime? ResolveLastAnnounceUtc(TimeSpan timeSinceLastAnnounce, DateTime utcNow)
+    {
+        // MonoTorrent initializes TimeSinceLastAnnounce to TimeSpan.MaxValue before a tracker's first announce.
+        if (timeSinceLastAnnounce < TimeSpan.Zero || timeSinceLastAnnounce >= TimeSpan.FromDays(36500))
+        {
+            return null;
+        }
+
+        return utcNow.Subtract(timeSinceLastAnnounce);
     }
 
     public async Task AddTrackerAsync(Guid torrentId, string trackerUrl, CancellationToken cancellationToken)
@@ -395,17 +531,47 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
         if (restoredManager is not null)
         {
+            // Ensure restored managers from prior app versions also use rarest-first piece picking until streamed.
+            if (restoredManager.StreamProvider is not null)
+            {
+                await restoredManager.ChangePickerAsync(new StandardPieceRequester(new PieceRequesterSettings()));
+            }
+
+            await ApplySavedManagerSettingsAsync(restoredManager, cancellationToken);
+            if (torrent.Source.Kind == TorrentSourceKind.MagnetLink)
+            {
+                await EnsureSeparateTrackerTiersAsync(restoredManager, torrent);
+            }
+
             _managers[torrentId] = restoredManager;
+            _sessionUploadedBaselines[torrentId] = torrent.UploadedBytes;
             return restoredManager;
         }
 
         var manager = await CreateManagerAsync(torrent, cancellationToken);
         _managers[torrentId] = manager;
+        _sessionUploadedBaselines[torrentId] = torrent.UploadedBytes;
         await SaveEngineStateAsync();
 
         _logger.LogInformation("Created MonoTorrent manager for torrent {TorrentId}", torrentId);
 
         return manager;
+    }
+
+    private async Task ApplySavedManagerSettingsAsync(TorrentManager manager, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
+            var settingsRepo = scope.ServiceProvider.GetRequiredService<ISettingsRepository>();
+            var savedSettings = await settingsRepo.GetAsync(cancellationToken);
+            var updatedSettings = BuildTorrentSettings(manager.Settings, savedSettings.EnableDht, savedSettings.EnablePex);
+            await manager.UpdateSettingsAsync(updatedSettings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not apply saved settings to restored torrent manager.");
+        }
     }
 
     private TorrentManager? TryAttachRestoredManager(HarborTorrent.Domain.Torrents.Torrent torrent)
@@ -446,17 +612,16 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
             _logger.LogWarning(ex, "Could not read settings for torrent manager creation; using defaults.");
         }
 
-        var settings = new TorrentSettingsBuilder
-        {
-            CreateContainingDirectory = true,
-            AllowDht = allowDht,
-            AllowPeerExchange = allowPex
-        }.ToSettings();
+        var settings = BuildTorrentSettings(baseSettings: null, allowDht, allowPex);
 
         if (torrent.Source.Kind == TorrentSourceKind.MagnetLink)
         {
             var magnetLink = MagnetLink.Parse(torrent.Source.Value);
-            return await _engine.AddStreamingAsync(magnetLink, torrent.SavePath, settings);
+            // Add without trackers so each tracker can be registered in its own tier and announced in parallel.
+            var bareMagnet = new MagnetLink(magnetLink.InfoHashes, magnetLink.Name);
+            var manager = await _engine.AddAsync(bareMagnet, torrent.SavePath, settings);
+            await EnsureSeparateTrackerTiersAsync(manager, torrent);
+            return manager;
         }
 
         var temporaryFilePath = Path.Combine(Path.GetTempPath(), $"{torrent.Id:N}.torrent");
@@ -465,13 +630,175 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         {
             var bytes = Convert.FromBase64String(torrent.Source.Value);
             await File.WriteAllBytesAsync(temporaryFilePath, bytes, cancellationToken);
-            return await _engine.AddStreamingAsync(temporaryFilePath, torrent.SavePath, settings);
+            return await _engine.AddAsync(temporaryFilePath, torrent.SavePath, settings);
         }
         finally
         {
             if (File.Exists(temporaryFilePath))
             {
                 File.Delete(temporaryFilePath);
+            }
+        }
+    }
+
+    private async Task<TorrentManager> UpgradeToStreamingManagerAsync(
+        Guid torrentId,
+        TorrentManager manager,
+        CancellationToken cancellationToken)
+    {
+        var loadedTorrent = manager.Torrent;
+        if (loadedTorrent is null)
+        {
+            return manager;
+        }
+
+        var priorities = manager.Files?.Select(f => f.Priority).ToArray() ?? [];
+        var savePath = manager.SavePath;
+        var settings = manager.Settings;
+        _sessionUploadedBaselines[torrentId] =
+            _sessionUploadedBaselines.GetValueOrDefault(torrentId) + manager.Monitor.DataBytesSent;
+
+        if (manager.State != TorrentState.Stopped)
+        {
+            await manager.StopAsync(StopTimeout);
+        }
+
+        await _engine.RemoveAsync(manager);
+
+        var streamingManager = await _engine.AddStreamingAsync(loadedTorrent, savePath, settings);
+        _managers[torrentId] = streamingManager;
+
+        if (streamingManager.Files is not null)
+        {
+            for (var i = 0; i < Math.Min(priorities.Length, streamingManager.Files.Count); i++)
+            {
+                if (priorities[i] != Priority.Normal)
+                {
+                    await streamingManager.SetFilePriorityAsync(streamingManager.Files[i], priorities[i]);
+                }
+            }
+        }
+
+        await streamingManager.StartAsync();
+        await SaveEngineStateAsync();
+
+        return streamingManager;
+    }
+
+    private static EngineSettingsBuilder ApplyPerformanceDefaults(EngineSettingsBuilder builder)
+    {
+        builder.AllowPortForwarding = true;
+        builder.AllowHaveSuppression = true;
+        builder.MaximumConnections = DefaultEngineMaxConnections;
+        builder.MaximumHalfOpenConnections = DefaultMaxHalfOpenConnections;
+        builder.DiskCacheBytes = DefaultDiskCacheBytes;
+        builder.DiskCachePolicy = CachePolicy.ReadsAndWrites;
+        builder.StaleRequestTimeout = DefaultStaleRequestTimeout;
+        return builder;
+    }
+
+    private static TorrentSettings BuildTorrentSettings(TorrentSettings? baseSettings, bool allowDht, bool allowPex)
+    {
+        var builder = baseSettings is null
+            ? new TorrentSettingsBuilder()
+            : new TorrentSettingsBuilder(baseSettings);
+
+        builder.CreateContainingDirectory = true;
+        builder.AllowDht = allowDht;
+        builder.AllowPeerExchange = allowPex;
+        builder.MaximumConnections = DefaultTorrentMaxConnections;
+        builder.UploadSlots = DefaultTorrentUploadSlots;
+
+        return builder.ToSettings();
+    }
+
+    internal async Task EnsureSeparateTrackerTiersAsync(TorrentManager manager, HarborTorrent.Domain.Torrents.Torrent torrent)
+    {
+        if (manager.TrackerManager is null)
+        {
+            return;
+        }
+
+        var existingTrackers = manager.TrackerManager.Tiers
+            .SelectMany(tier => tier.Trackers)
+            .ToArray();
+        var hasMultiTrackerTier = manager.TrackerManager.Tiers.Any(tier => tier.Trackers.Count > 1);
+
+        var desiredUrls = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddCandidate(string? rawUrl)
+        {
+            if (string.IsNullOrWhiteSpace(rawUrl))
+            {
+                return;
+            }
+
+            var normalized = rawUrl.Trim();
+            if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri) && seen.Add(uri.ToString()))
+            {
+                desiredUrls.Add(uri.ToString());
+            }
+        }
+
+        if (torrent.Source.Kind == TorrentSourceKind.MagnetLink)
+        {
+            try
+            {
+                var parsed = MagnetLink.Parse(torrent.Source.Value);
+                foreach (var url in parsed.AnnounceUrls)
+                {
+                    AddCandidate(url);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not parse magnet announce URLs for torrent {TorrentId}.", torrent.Id);
+            }
+
+            foreach (var defaultTracker in TorrentSource.DefaultTrackers)
+            {
+                AddCandidate(defaultTracker);
+            }
+        }
+
+        foreach (var tracker in existingTrackers)
+        {
+            AddCandidate(tracker.Uri.ToString());
+        }
+
+        var existingUrls = new HashSet<string>(existingTrackers.Select(t => t.Uri.ToString()), StringComparer.OrdinalIgnoreCase);
+        if (!hasMultiTrackerTier && desiredUrls.All(existingUrls.Contains))
+        {
+            return;
+        }
+
+        if (hasMultiTrackerTier)
+        {
+            // MonoTorrent only announces one tracker per tier; rebuild into 1 tier per tracker.
+            foreach (var tracker in existingTrackers)
+            {
+                await manager.TrackerManager.RemoveTrackerAsync(tracker);
+            }
+
+            existingUrls.Clear();
+        }
+
+        foreach (var url in desiredUrls)
+        {
+            if (existingUrls.Contains(url))
+            {
+                continue;
+            }
+
+            try
+            {
+                await manager.TrackerManager.AddTrackerAsync(new Uri(url));
+                existingUrls.Add(url);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Skipping unsupported tracker URI '{TrackerUrl}' for torrent {TorrentId}.", url, torrent.Id);
             }
         }
     }
@@ -515,27 +842,31 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
             }
         }
 
-        return new ClientEngine(new EngineSettingsBuilder
+        var listenEndPoints = new Dictionary<string, IPEndPoint>
         {
-            AllowPortForwarding = true,
-            MaximumConnections = 300,
-            MaximumHalfOpenConnections = 20,
+            ["ipv4"] = new(IPAddress.Any, 0)
+        };
+        if (System.Net.Sockets.Socket.OSSupportsIPv6)
+        {
+            listenEndPoints["ipv6"] = new(IPAddress.IPv6Any, 0);
+        }
+
+        var engineBuilder = ApplyPerformanceDefaults(new EngineSettingsBuilder
+        {
             AutoSaveLoadDhtCache = true,
             AutoSaveLoadFastResume = true,
             AutoSaveLoadMagnetLinkMetadata = true,
             CacheDirectory = cacheDirectory,
             DhtEndPoint = new IPEndPoint(IPAddress.Any, 0),
-            ListenEndPoints = new Dictionary<string, IPEndPoint>
-            {
-                ["ipv4"] = new(IPAddress.Any, 0),
-                ["ipv6"] = new(IPAddress.IPv6Any, 0)
-            }
+            ListenEndPoints = listenEndPoints
             // Note: MaxDownloadSpeed, MaxUploadSpeed, DHT, PEX, LPD will be applied 
             // separately via UpdateEngineSettingsAsync shortly after startup by the HostedService 
             // or they could be resolved here if ISettingsRepository is passed into the constructor, 
             // but fetching it in a synchronous constructor is an anti-pattern. 
             // Let the TorrentLifecycleHostedService initialize the settings on start.
-        }.ToSettings());
+        });
+
+        return new ClientEngine(engineBuilder.ToSettings());
     }
 
     private async Task SaveEngineStateAsync()
@@ -550,27 +881,32 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
         await _engine.SaveStateAsync(_engineStatePath);
     }
 
-    private static TorrentRuntimeSnapshot CreateSnapshot(Guid torrentId, TorrentManager manager)
+    private static TorrentRuntimeSnapshot CreateSnapshot(Guid torrentId, TorrentManager manager, long uploadedBaseline)
     {
         var progress = decimal.Round((decimal)manager.Progress, 2);
         var downloadedBytes = manager.HasMetadata && manager.Files != null
             ? manager.Files.Sum(f => f.BytesDownloaded())
             : manager.Monitor.DataBytesReceived;
-        var uploadedBytes = manager.Monitor.DataBytesSent;
+        var uploadedBytes = uploadedBaseline + manager.Monitor.DataBytesSent;
         var ratio = downloadedBytes <= 0
             ? 0m
             : decimal.Round((decimal)uploadedBytes / downloadedBytes, 3);
+        var status = MapStatus(manager);
+        var errorMessage = manager.State == TorrentState.Error
+            ? manager.Error?.Exception?.Message ?? manager.Error?.Reason.ToString() ?? "Torrent engine reported an error."
+            : null;
 
         return new TorrentRuntimeSnapshot(
             torrentId,
-            MapStatus(manager),
+            status,
             progress,
             downloadedBytes,
             uploadedBytes,
             manager.Monitor.DownloadRate,
             manager.Monitor.UploadRate,
             ratio,
-            CalculateEtaSeconds(manager, progress));
+            CalculateEtaSeconds(manager, progress),
+            errorMessage);
     }
 
     private static TorrentStatus MapStatus(TorrentManager manager)
@@ -611,6 +947,23 @@ public sealed class MonoTorrentRuntimeCoordinator : ITorrentRuntimeCoordinator, 
 
     public void Dispose()
     {
+        try
+        {
+            var stopTasks = _managers.Values
+                .Where(m => m.State != TorrentState.Stopped)
+                .Select(m => m.StopAsync(StopTimeout))
+                .ToArray();
+
+            if (stopTasks.Length > 0)
+            {
+                Task.WhenAll(stopTasks).WaitAsync(TimeSpan.FromSeconds(4)).GetAwaiter().GetResult();
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Timed out or failed while stopping torrent managers during shutdown.");
+        }
+
         try
         {
             SaveEngineStateAsync().GetAwaiter().GetResult();

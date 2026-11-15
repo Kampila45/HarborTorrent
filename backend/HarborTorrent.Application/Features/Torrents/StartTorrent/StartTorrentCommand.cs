@@ -45,7 +45,12 @@ internal sealed class StartTorrentCommandHandler : IRequestHandler<StartTorrentC
             return Result<TorrentDto>.Failure(startResult.Errors);
         }
 
-        await _runtimeCoordinator.StartAsync(torrent.Id, cancellationToken);
+        var runtimeResult = await _runtimeCoordinator.StartAsync(torrent.Id, cancellationToken);
+        if (runtimeResult.IsFailure)
+        {
+            return Result<TorrentDto>.Failure(runtimeResult.Errors);
+        }
+
         await _torrentRepository.SaveChangesAsync(cancellationToken);
 
         var dto = torrent.ToDto();

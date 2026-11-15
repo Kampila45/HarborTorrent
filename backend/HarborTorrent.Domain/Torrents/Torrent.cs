@@ -196,4 +196,14 @@ public sealed class Torrent
         ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? null : errorMessage.Trim();
         UpdatedAtUtc = updatedAtUtc;
     }
+
+    public void Fail(string errorMessage, DateTimeOffset updatedAtUtc)
+    {
+        Status = TorrentStatus.Stopped;
+        DownloadSpeedBytesPerSecond = 0;
+        UploadSpeedBytesPerSecond = 0;
+        EtaSeconds = null;
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "Torrent engine error." : errorMessage.Trim();
+        UpdatedAtUtc = updatedAtUtc;
+    }
 }

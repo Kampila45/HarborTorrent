@@ -1,6 +1,7 @@
-import { Activity, AlertCircle, CheckCircle2, Folder, Gauge, List, PlayCircle } from 'lucide-react';
+import { Activity, CheckCircle2, Folder, Gauge, List, PlayCircle } from 'lucide-react';
 import { useState } from 'react';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTorrent } from '@/services/torrents.api';
@@ -18,7 +19,7 @@ export function TorrentDetailsPage() {
   const [activeTab, setActiveTab] = useState<TabView>('files');
 
   // Fetch this specific torrent by ID so details are correct even with more than 10 torrents.
-  const { data: torrent, isLoading, isError } = useQuery({
+  const { data: torrent, isLoading, isError, error: torrentError, refetch: refetchTorrent } = useQuery({
     queryKey: ['torrent', torrentId],
     queryFn: () => fetchTorrent(torrentId!),
     enabled: !!torrentId,
@@ -29,11 +30,8 @@ export function TorrentDetailsPage() {
 
   if (!torrentId) {
     return (
-      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
-        <div className="flex flex-col items-center justify-center gap-3 py-20 text-[#73726F]">
-          <AlertCircle size={40} />
-          <p className="text-[15px]">No torrent ID specified.</p>
-        </div>
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <PageErrorState message="No torrent ID specified." tone="muted" />
       </section>
     );
   }
@@ -46,13 +44,25 @@ export function TorrentDetailsPage() {
     );
   }
 
-  if (isError || !torrent) {
+  if (isError) {
+    const statusCode = (torrentError as { status?: number } | null)?.status;
+    const isNotFound = statusCode === 404;
+
     return (
-      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
-        <div className="flex flex-col items-center justify-center gap-3 py-20 text-[#73726F]">
-          <AlertCircle size={40} />
-          <p className="text-[15px]">Torrent not found.</p>
-        </div>
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <PageErrorState
+          message={isNotFound ? 'Torrent not found or has been removed.' : 'Unable to load torrent details.'}
+          tone={isNotFound ? 'muted' : 'error'}
+          onRetry={isNotFound ? undefined : () => refetchTorrent()}
+        />
+      </section>
+    );
+  }
+
+  if (!torrent) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <PageErrorState message="Torrent not found." tone="muted" />
       </section>
     );
   }
@@ -144,7 +154,7 @@ export function TorrentDetailsPage() {
         <div className="flex items-end justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-[#4B4A47] dark:text-[#E9E9E7]">Overall Progress</h3>
           <span className="text-sm font-medium text-[#37352F] dark:text-[#E9E9E7]">
-            {progress.toFixed(1)}% <span className="font-normal text-[#5F5E5B] dark:text-[#E9E9E7]">({formatBytes(torrent.downloadedBytes)} / {formatBytes(Math.max(torrent.downloadedBytes, Math.round((torrent.downloadedBytes / Math.max(progress, 1)) * 100)))})</span>
+            {progress.toFixed(1)}% <span className="font-normal text-[#5F5E5B] dark:text-[#E9E9E7]">({formatBytes(torrent.downloadedBytes)} / {formatBytes(Math.max(torrent.downloadedBytes, totalBytes))})</span>
           </span>
         </div>
         <div className="h-3 overflow-hidden rounded-full bg-[#f3f4f6]">
@@ -185,7 +195,7 @@ export function TorrentDetailsPage() {
                   {torrent.name}
                 </div>
                 <div className="flex items-center gap-6 text-sm text-[#5F5E5B] dark:text-[#E9E9E7]">
-                  <span className="w-16 text-right">{formatBytes(Math.max(torrent.downloadedBytes, 1))}</span>
+                  <span className="min-w-16 whitespace-nowrap text-right">{formatBytes(totalBytes)}</span>
                   <span className="w-8 text-right font-medium text-[#37352F] dark:text-[#E9E9E7]">{progress.toFixed(0)}%</span>
                 </div>
               </div>
