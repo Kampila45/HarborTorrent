@@ -1,5 +1,6 @@
 namespace HarborTorrent.Application.Abstractions.Runtime;
 
+using HarborTorrent.Domain.Common;
 using HarborTorrent.Domain.Torrents;
 
 public sealed record TorrentRuntimeSnapshot(
@@ -11,7 +12,8 @@ public sealed record TorrentRuntimeSnapshot(
     long DownloadSpeedBytesPerSecond,
     long UploadSpeedBytesPerSecond,
     decimal Ratio,
-    long? EtaSeconds);
+    long? EtaSeconds,
+    string? ErrorMessage = null);
 
 public sealed record TorrentFileSnapshot(
     int Index,
@@ -25,11 +27,11 @@ public sealed record TorrentFileSnapshot(
 /// </summary>
 public interface ITorrentRuntimeCoordinator
 {
-    Task StartAsync(Guid torrentId, CancellationToken cancellationToken);
+    Task<Result> StartAsync(Guid torrentId, CancellationToken cancellationToken);
 
-    Task PauseAsync(Guid torrentId, CancellationToken cancellationToken);
+    Task<Result> PauseAsync(Guid torrentId, CancellationToken cancellationToken);
 
-    Task StopAsync(Guid torrentId, CancellationToken cancellationToken);
+    Task<Result> StopAsync(Guid torrentId, CancellationToken cancellationToken);
 
     Task RemoveAsync(Guid torrentId, CancellationToken cancellationToken);
 

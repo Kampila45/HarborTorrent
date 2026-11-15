@@ -1,4 +1,5 @@
 using HarborTorrent.Api.Contracts;
+using HarborTorrent.Application.Abstractions.Rss;
 using HarborTorrent.Application.Features.Rss.AddRssFeed;
 using HarborTorrent.Application.Features.Rss.AddRssFilter;
 using HarborTorrent.Application.Features.Rss.DeleteRssFeed;
@@ -17,6 +18,7 @@ internal static class RssEndpoints
         group.MapGet("/", GetFeedsAsync);
         group.MapPost("/", AddFeedAsync);
         group.MapDelete("/{id:guid}", DeleteFeedAsync);
+        group.MapPost("/{id:guid}/poll", PollFeedAsync);
         group.MapPost("/{id:guid}/filters", AddFilterAsync);
         group.MapDelete("/filters/{filterId:guid}", DeleteFilterAsync);
 
@@ -41,6 +43,28 @@ internal static class RssEndpoints
         return Results.Json(ApiResponseFactory.Success<object?>(httpContext, null));
     }
 
+    private static async Task<IResult> PollFeedAsync(Guid id, IRssFeedPoller poller, ISender sender, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        var summary = await poller.PollFeedAsync(id, cancellationToken);
+        var feeds = await sender.Send(new GetRssFeedsQuery(), cancellationToken);
+        var updated = feeds.FirstOrDefault(f => f.Id == id);
+        if (updated is null)
+        {
+            return Results.NotFound(ApiResponseFactory.Failure<object?>(
+                httpContext,
+                new[] { HarborTorrent.Domain.Common.Error.NotFound("RSS feed not found.") }));
+        }
+        return Results.Json(ApiResponseFactory.Success(httpContext, new
+        {
+            feed = updated,
+            summary.ItemsScanned,
+            summary.MatchedCount,
+            summary.AddedCount,
+            summary.SampleTitles,
+            summary.ErrorMessage,
+        }));
+    }
+
     private static async Task<IResult> AddFilterAsync(Guid id, AddRssFilterRequest request, ISender sender, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var command = new AddRssFilterCommand(id, request.RegexPattern, request.SavePath);
@@ -55,4 +79,4 @@ internal static class RssEndpoints
     }
 }
 
-public record AddRssFilterRequest(string RegexPattern, string SavePath);
+public record AddRssFilterRequest(string RegexPattern, string? SavePath = null);

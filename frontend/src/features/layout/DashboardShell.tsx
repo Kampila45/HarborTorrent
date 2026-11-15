@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { BarChart3, CheckSquare, Download, LayoutDashboard, Menu, Moon, Plus, Search, Sun, X, Settings, Anchor, Rss } from 'lucide-react';
+import { BarChart3, CheckSquare, Download, HelpCircle, LayoutDashboard, Menu, Moon, Plus, Search, Sun, X, Settings, Anchor, Rss } from 'lucide-react';
 import { AddTorrentModal } from '@/features/torrents/components/AddTorrentModal';
+import { InteractiveTour } from '@/features/onboarding/InteractiveTour';
 import { useUiStore } from '@/store/uiStore';
+import { useSystemStore } from '@/store/systemStore';
 import { useTorrentSignalR } from '@/features/torrents/hooks/useTorrentSignalR';
 import { useSystemUpdater } from '@/features/system/hooks/useSystemUpdater';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '@/features/settings/api';
+import { fetchDashboardMetrics } from '@/services/torrents.api';
 
 const navigationItems = [
   { label: 'Dashboard', navLabel: 'Dashboard', path: '/' },
@@ -34,16 +37,53 @@ const routes = navigationItems.map((item) => ({
 }));
 
 export function DashboardShell() {
-  const { sidebarOpen, mobileNavOpen, toggleMobileNav, closeMobileNav, openAddTorrent, theme, setTheme } = useUiStore();
+  const {
+    sidebarOpen,
+    mobileNavOpen,
+    toggleMobileNav,
+    closeMobileNav,
+    openAddTorrent,
+    theme,
+    setTheme,
+    hasCompletedOnboarding,
+    openOnboarding,
+    completeOnboarding,
+  } = useUiStore();
+  const signalrStatus = useSystemStore((state) => state.signalrStatus);
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.getSettings });
+  const { data: metrics } = useQuery({
+    queryKey: ['dashboardMetrics'],
+    queryFn: fetchDashboardMetrics,
+    enabled: !hasCompletedOnboarding,
+  });
+
+  useEffect(() => {
+    if (hasCompletedOnboarding || !settings || !metrics) return;
+    if (metrics.totalTorrents > 0) {
+      completeOnboarding();
+    } else {
+      openOnboarding();
+    }
+  }, [hasCompletedOnboarding, settings, metrics, completeOnboarding, openOnboarding]);
   
   const updateSettingsMutation = useMutation({
     mutationFn: settingsApi.updateSettings,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    onMutate: async (nextSettings) => {
+      await queryClient.cancelQueries({ queryKey: ['settings'] });
+      const previous = queryClient.getQueryData<typeof settings>(['settings']);
+      queryClient.setQueryData(['settings'], nextSettings);
+      return { previous };
+    },
+    onError: (_err, _nextSettings, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['settings'], context.previous);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
 
   const toggleAnchorMode = () => {
@@ -168,6 +208,7 @@ export function DashboardShell() {
         <div className="mb-4 px-2.5">
           <button
             type="button"
+            data-tour="new-torrent"
             className="flex w-full items-center gap-2 rounded border border-[#EDEDEB] bg-white px-3 py-2 text-[14px] text-[#37352F] shadow-sm transition-colors hover:bg-[#F7F7F5]"
             onClick={() => openAddTorrent()}
           >
@@ -182,6 +223,7 @@ export function DashboardShell() {
               key={item.label}
               to={item.path}
               end={item.path === '/'}
+              data-tour={`nav-${item.path === '/' ? 'dashboard' : item.path.slice(1)}`}
               className={({ isActive }) => [
                 'flex items-center gap-2 rounded px-4 py-1.5 text-[14px] transition-colors',
                 isActive
@@ -252,8 +294,26 @@ export function DashboardShell() {
           </div>
 
           <div className="flex items-center gap-2 md:gap-4">
+            {(signalrStatus === 'reconnecting' || signalrStatus === 'disconnected') && (
+              <span
+                className={`hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+                  signalrStatus === 'reconnecting'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                }`}
+                title="Live updates connection status"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    signalrStatus === 'reconnecting' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'
+                  }`}
+                />
+                {signalrStatus === 'reconnecting' ? 'Reconnecting…' : 'Live updates disconnected'}
+              </span>
+            )}
             <button
               type="button"
+              data-tour="anchor-mode"
               className={`rounded p-1.5 transition-colors ${settings?.anchorModeEnabled ? 'bg-[#2383E2] text-white hover:bg-[#1a73cc]' : 'text-[#5F5E5B] dark:text-[#E9E9E7] hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]'}`}
               onClick={toggleAnchorMode}
               disabled={updateSettingsMutation.isPending}
@@ -269,6 +329,15 @@ export function DashboardShell() {
               aria-label="Toggle theme"
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <button
+              type="button"
+              className="rounded p-1.5 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)]"
+              onClick={openOnboarding}
+              aria-label="Interactive tour"
+              title="Interactive Tour"
+            >
+              <HelpCircle size={18} />
             </button>
             <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 rounded px-2 py-1 transition-all hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[rgba(255,255,255,0.08)] focus-within:ring-1 focus-within:ring-[#2383E2] focus-within:bg-white dark:focus-within:bg-[#111111]">
               <Search size={18} />
@@ -290,6 +359,7 @@ export function DashboardShell() {
       </main>
 
       <AddTorrentModal />
+      <InteractiveTour />
     </div>
   );
 }

@@ -434,3 +434,9 @@ FodyWeavers.xsd
 # AppSettings (Secrets and Configs)
 appsettings.json
 appsettings.*.json
+
+# Local runtime data
+HarborTorrent.Api/HarborTorrent/
+*.db-shm
+*.db-wal
+harbor.lock

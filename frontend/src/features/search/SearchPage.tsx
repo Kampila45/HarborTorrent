@@ -3,9 +3,12 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { searchApi } from './api';
+import { systemApi } from '@/features/system/api';
+import { useSystemStore } from '@/store/systemStore';
 import { useUiStore } from '@/store/uiStore';
 import { formatBytes } from '@/utils/formatters';
 import { Pagination } from '@/components/Pagination';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -14,10 +17,28 @@ export function SearchPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  const { data: results, isLoading } = useQuery({
+  const signalrStatus = useSystemStore((state) => state.signalrStatus);
+
+  const {
+    isError: isBackendError,
+    refetch: refetchBackend,
+  } = useQuery({
+    queryKey: ['searchBackendHealth'],
+    queryFn: systemApi.getVersion,
+    retry: false,
+    refetchOnMount: 'always',
+  });
+
+  useEffect(() => {
+    if (signalrStatus === 'disconnected' || signalrStatus === 'connected') {
+      void refetchBackend();
+    }
+  }, [signalrStatus, refetchBackend]);
+
+  const { data: results, isLoading, isError, refetch } = useQuery({
     queryKey: ['search', initialQuery],
     queryFn: () => searchApi.searchTorrents(initialQuery),
-    enabled: initialQuery.length > 0,
+    enabled: initialQuery.length > 0 && !isBackendError,
   });
 
   const { openAddTorrent } = useUiStore();
@@ -40,6 +61,22 @@ export function SearchPage() {
   };
 
   const paginatedResults = results?.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  if (isBackendError) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState
+          message="Failed to load search"
+          onRetry={() => {
+            void refetchBackend();
+            if (initialQuery.length > 0) {
+              void refetch();
+            }
+          }}
+        />
+      </section>
+    );
+  }
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-[#111111] px-4 sm:px-8 md:px-10 pb-10 pt-6">
@@ -84,6 +121,8 @@ export function SearchPage() {
             <h3 className="text-xl font-bold text-[#37352F] dark:text-[#E9E9E7]">Ready to Explore</h3>
             <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-[#5F5E5B] dark:text-[#C4C4C4]">Enter a query above to search global public trackers directly from HarborTorrent.</p>
           </div>
+        ) : isError ? (
+          <PageErrorState message="Failed to search torrents" onRetry={() => refetch()} />
         ) : results && results.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center p-12 text-center">
             <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F7F7F5] to-[#EDEDEB] shadow-inner dark:from-[#2A2A2A] dark:to-[#111111]">
@@ -142,7 +181,13 @@ export function SearchPage() {
                       
                       <button
                         type="button"
-                        onClick={() => openAddTorrent(result.magnetUri)}
+                        onClick={() =>
+                          openAddTorrent(result.magnetUri, undefined, {
+                            title: result.title,
+                            sizeBytes: result.sizeBytes,
+                            providerName: result.providerName,
+                          })
+                        }
                         className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#2383E2] px-4 text-[13px] font-bold text-white shadow-sm transition-all hover:scale-105 hover:bg-[#1a73cc] hover:shadow-md active:scale-95"
                       >
                         <Download size={16} />

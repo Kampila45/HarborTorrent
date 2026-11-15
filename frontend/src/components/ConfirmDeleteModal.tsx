@@ -1,5 +1,6 @@
 import { Trash2, X } from 'lucide-react';
 import { useEffect } from 'react';
+import { Button } from '@/components/ui/Button';
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
@@ -65,21 +66,13 @@ export function ConfirmDeleteModal({ isOpen, torrentName, title, message, onConf
         </p>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-[13px] font-medium border border-[var(--border-strong)] bg-[#F7F7F5] dark:bg-[#2A2A2A] text-[#37352F] dark:text-[#E9E9E7] hover:bg-[#EDEDEB] dark:hover:bg-[#333333] active:scale-95 transition-all"
-          >
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="secondary" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="px-4 py-2 rounded-lg text-[13px] font-medium bg-[#D4403A] text-white hover:bg-[#b83530] active:scale-95 transition-all"
-          >
+          </Button>
+          <Button variant="danger" onClick={onConfirm}>
             Remove
-          </button>
+          </Button>
         </div>
       </div>
     </div>

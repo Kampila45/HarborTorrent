@@ -1,35 +1,85 @@
-import { Folder, PlayCircle, ChevronRight, ArrowLeft } from 'lucide-react';
-import { useMemo } from 'react';
+import { AlertCircle, ArrowLeft, ChevronRight, Folder, PlayCircle, RefreshCw } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { Button } from '@/components/ui/Button';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useTorrentsQuery } from '@/features/torrents/hooks/useTorrentsQuery';
+import { useQuery } from '@tanstack/react-query';
+import { fetchStreamToken, fetchTorrent } from '@/services/torrents.api';
 import { useTorrentFilesQuery } from '@/features/torrents/hooks/useTorrentFilesQuery';
+import { getSessionConfig } from '@/services/session';
 import { formatBytes } from '@/utils/formatters';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000/api/v1';
 
 export function StreamPage() {
   const { torrentId, fileIndex } = useParams();
   const navigate = useNavigate();
-  const { data, isLoading, isError } = useTorrentsQuery();
-  const { data: filesData, isLoading: isLoadingFiles } = useTorrentFilesQuery(torrentId);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const parsedFileIndex = fileIndex !== undefined ? Number.parseInt(fileIndex, 10) : Number.NaN;
+
+  const {
+    data: torrent,
+    isLoading: isLoadingTorrent,
+    isError: isTorrentError,
+    refetch: refetchTorrent,
+  } = useQuery({
+    queryKey: ['torrent', torrentId],
+    queryFn: () => fetchTorrent(torrentId!),
+    enabled: !!torrentId,
+  });
+
+  const {
+    data: filesData,
+    isLoading: isLoadingFiles,
+    isError: isFilesError,
+    refetch: refetchFiles,
+  } = useTorrentFilesQuery(torrentId);
 
   const file = useMemo(() => {
-    if (!filesData || !fileIndex) return null;
-    return filesData.find((f) => f.index.toString() === fileIndex) ?? null;
-  }, [filesData, fileIndex]);
+    if (!filesData || Number.isNaN(parsedFileIndex)) return null;
+    return filesData.find((f) => f.index === parsedFileIndex) ?? null;
+  }, [filesData, parsedFileIndex]);
 
-  const torrent = useMemo(() => {
-    if (!data || !torrentId) return null;
-    return data.items.find((item) => item.id === torrentId) ?? null;
-  }, [data, torrentId]);
+  const {
+    data: streamTokenData,
+    isLoading: isLoadingToken,
+    isError: isTokenError,
+    refetch: refetchToken,
+  } = useQuery({
+    queryKey: ['streamToken', torrentId, parsedFileIndex],
+    queryFn: () => fetchStreamToken(torrentId!, parsedFileIndex),
+    enabled: !!torrentId && !Number.isNaN(parsedFileIndex) && parsedFileIndex >= 0 && !!file,
+    staleTime: 60 * 60 * 1000, // Token is valid for 4 hours; refresh after 1 hour
+  });
 
-  // Desktop build: no auth token needed — API is local and unauthenticated.
-  const videoUrl = torrentId && fileIndex
-    ? `${API_BASE}/files/stream?torrentId=${torrentId}&fileIndex=${fileIndex}`
-    : null;
+  const videoUrl = useMemo(() => {
+    if (!torrentId || Number.isNaN(parsedFileIndex) || !streamTokenData?.token) {
+      return null;
+    }
+    const { apiBaseUrl } = getSessionConfig();
+    const params = new URLSearchParams({
+      torrentId,
+      fileIndex: parsedFileIndex.toString(),
+      mediaToken: streamTokenData.token,
+    });
+    return `${apiBaseUrl}/files/stream?${params.toString()}`;
+  }, [torrentId, parsedFileIndex, streamTokenData?.token]);
 
-  if (isLoading || isLoadingFiles || !isError && (!torrent || !file) || !videoUrl) {
+  if (!torrentId || Number.isNaN(parsedFileIndex) || parsedFileIndex < 0) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState
+          message="Invalid torrent or file specified for streaming."
+          actions={
+            <Button variant="outline" onClick={() => navigate('/downloads')}>
+              Back to Downloads
+            </Button>
+          }
+        />
+      </section>
+    );
+  }
+
+  if (isLoadingTorrent || isLoadingFiles || (file && isLoadingToken)) {
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
         <PageSkeleton />
@@ -37,7 +87,54 @@ export function StreamPage() {
     );
   }
 
-  const nextFiles = filesData?.filter(f => f.index > (file?.index ?? -1) && f.path.match(/\.(mp4|mkv|avi|webm)$/i)).slice(0, 4) || [];
+  if (isTorrentError || isFilesError || isTokenError) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState
+          message="Unable to load stream"
+          description="Could not initialize the authenticated media stream for this file."
+          actions={
+            <>
+              <Button
+                onClick={() => {
+                  setPlaybackError(null);
+                  refetchTorrent();
+                  refetchFiles();
+                  refetchToken();
+                }}
+              >
+                <RefreshCw size={14} />
+                Retry
+              </Button>
+              <Button variant="outline" onClick={() => navigate(`/torrent/${torrentId}`)}>
+                <ArrowLeft size={14} />
+                Back to Details
+              </Button>
+            </>
+          }
+        />
+      </section>
+    );
+  }
+
+  if (!torrent || !file || !videoUrl) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState
+          message="File unavailable. The torrent or selected file could not be found."
+          tone="muted"
+          actions={
+            <Button variant="outline" onClick={() => navigate(`/torrent/${torrentId}`)}>
+              <ArrowLeft size={14} />
+              Back to Details
+            </Button>
+          }
+        />
+      </section>
+    );
+  }
+
+  const nextFiles = filesData?.filter(f => f.index !== file.index && f.path.match(/\.(mp4|mkv|avi|webm|mov|m4v|ogg)$/i)).slice(0, 4) || [];
 
   return (
     <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-[1400px] mx-auto w-full space-y-6">
@@ -46,18 +143,15 @@ export function StreamPage() {
         <div className="flex items-center flex-wrap gap-2 text-[#5F5E5B] dark:text-[#E9E9E7] text-sm">
           <button onClick={() => navigate('/downloads')} className="hover:text-[#2563eb] transition-colors">Downloads</button>
           <ChevronRight size={14} />
-          <button onClick={() => navigate(`/torrent/${torrentId}`)} className="hover:text-[#2563eb] transition-colors truncate max-w-[200px]">{torrent?.name}</button>
+          <button onClick={() => navigate(`/torrent/${torrentId}`)} className="hover:text-[#2563eb] transition-colors truncate max-w-[200px]">{torrent.name}</button>
           <ChevronRight size={14} />
-          <span className="text-[#37352F] dark:text-[#E9E9E7] font-bold truncate max-w-[300px]">{file?.path}</span>
+          <span className="text-[#37352F] dark:text-[#E9E9E7] font-bold truncate max-w-[300px]">{file.path}</span>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => navigate(`/torrent/${torrentId}`)}
-            className="flex items-center gap-2 px-4 py-2 rounded border border-[#e5e7eb] dark:border-[#333333] text-sm font-medium hover:bg-[#f9fafb] dark:hover:bg-[#1a1a1a] transition-all text-[#37352F] dark:text-[#E9E9E7]"
-          >
-            <ArrowLeft size={18} />
+          <Button variant="outline" onClick={() => navigate(`/torrent/${torrentId}`)}>
+            <ArrowLeft size={14} />
             Back to Details
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -67,12 +161,34 @@ export function StreamPage() {
         <div className="lg:col-span-3 space-y-6">
           {/* Video Container */}
           <div className="relative aspect-video bg-black overflow-hidden rounded-lg group shadow-sm border border-[#e5e7eb] dark:border-[#333333]">
-            <video
-              className="w-full h-full"
-              controls
-              autoPlay
-              src={videoUrl}
-            />
+            {playbackError ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center text-white">
+                <AlertCircle size={36} className="text-[#D4403A]" />
+                <p className="text-sm font-medium">{playbackError}</p>
+                <Button
+                  onClick={() => {
+                    setPlaybackError(null);
+                    refetchToken();
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  Reload Stream
+                </Button>
+              </div>
+            ) : (
+              <video
+                key={videoUrl}
+                className="w-full h-full"
+                controls
+                autoPlay
+                src={videoUrl}
+                onError={() =>
+                  setPlaybackError(
+                    'Playback failed. The media format may not be supported by this WebView, or the stream is still buffering metadata.'
+                  )
+                }
+              />
+            )}
           </div>
 
           {/* Media Info Card */}
@@ -80,11 +196,11 @@ export function StreamPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-2">
                 <h2 className="text-xl sm:text-2xl font-bold text-[#37352F] dark:text-[#E9E9E7] break-words">
-                  {file?.path.split('/').pop()}
+                  {file.path.split(/[\\/]/).pop()}
                 </h2>
                 <div className="flex flex-wrap items-center gap-4 text-[#5F5E5B] dark:text-[#E9E9E7] text-sm">
                   <span className="bg-[#f3f4f6] dark:bg-[#222222] px-2 py-0.5 rounded text-xs uppercase font-mono tracking-wider">Stream</span>
-                  <span className="flex items-center gap-1"><Folder size={16} /> {formatBytes(file?.length ?? 0)}</span>
+                  <span className="flex items-center gap-1"><Folder size={16} /> {formatBytes(file.length)}</span>
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></span>
                     Sequential Download Active
@@ -92,7 +208,7 @@ export function StreamPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="mt-6 pt-6 border-t border-[#e5e7eb] dark:border-[#333333]">
               <p className="text-sm text-[#4B4A47] dark:text-[#E9E9E7] leading-relaxed max-w-3xl">
                 Streaming powered by MonoTorrent. This file is being downloaded sequentially in the background from the torrent swarm.
@@ -115,13 +231,16 @@ export function StreamPage() {
                 <div
                   key={f.index}
                   className="group cursor-pointer"
-                  onClick={() => navigate(`/torrent/${torrentId}/stream/${f.index}`)}
+                  onClick={() => {
+                    setPlaybackError(null);
+                    navigate(`/torrent/${torrentId}/stream/${f.index}`);
+                  }}
                 >
                   <div className="relative aspect-video rounded-lg overflow-hidden mb-2 bg-[#f3f4f6] dark:bg-[#222222] flex items-center justify-center">
                     <PlayCircle className="text-[rgba(55,53,47,0.3)] dark:text-[rgba(255,255,255,0.3)] group-hover:scale-110 transition-transform duration-300" size={32} />
                   </div>
                   <h4 className="text-sm text-[#37352F] dark:text-[#E9E9E7] line-clamp-2 group-hover:text-[#2563eb] transition-colors">
-                    {f.path.split('/').pop()}
+                    {f.path.split(/[\\/]/).pop()}
                   </h4>
                   <p className="text-[11px] text-[#5F5E5B] dark:text-[#E9E9E7] mt-0.5">{formatBytes(f.length)}</p>
                 </div>

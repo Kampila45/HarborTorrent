@@ -18,6 +18,10 @@ export function useDashboardData() {
 
   const isLoading = metricsQuery.isLoading || torrentsQuery.isLoading;
   const isError = metricsQuery.isError || torrentsQuery.isError;
+  const refetch = () => {
+    metricsQuery.refetch();
+    torrentsQuery.refetch();
+  };
 
   let dashboardData = null;
 
@@ -58,5 +62,6 @@ export function useDashboardData() {
     isLoading,
     isError,
     data: dashboardData,
+    refetch,
   };
 }

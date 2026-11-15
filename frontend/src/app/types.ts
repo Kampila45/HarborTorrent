@@ -50,6 +50,7 @@ export type PagedResultDto<T> = {
 };
 
 export type DashboardMetricsDto = {
+  totalTorrents: number;
   activeDownloads: number;
   completedTorrents: number;
   totalDownloadedBytes: number;

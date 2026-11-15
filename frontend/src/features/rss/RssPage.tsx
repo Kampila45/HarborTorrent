@@ -1,24 +1,35 @@
-import { Plus, Rss, Trash2 } from 'lucide-react';
+import { AlertCircle, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { Button } from '@/components/ui/Button';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { useRssActions, useRssQueries } from '@/features/rss/hooks/useRssActions';
 import { RssFeedModal } from './components/RssFeedModal';
 import { RssFilterModal } from './components/RssFilterModal';
 
 export function RssPage() {
-  const { data: feeds, isLoading, isError } = useRssQueries();
-  const { deleteFeedMutation, deleteFilterMutation } = useRssActions();
+  const { data: feeds, isLoading, isError, refetch } = useRssQueries();
+  const { deleteFeedMutation, pollFeedMutation, deleteFilterMutation } = useRssActions();
 
   const [feedModalOpen, setFeedModalOpen] = useState(false);
   const [filterModalOpen, setFilterModalOpen] = useState<{ isOpen: boolean; feedId: string }>({ isOpen: false, feedId: '' });
 
   const [deleteFeedTarget, setDeleteFeedTarget] = useState<{ id: string; name: string } | null>(null);
 
-  if (isLoading || isError) {
+  if (isLoading) {
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
         <PageSkeleton />
+      </section>
+    );
+  }
+
+  if (isError) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState message="Failed to load RSS feeds" onRetry={() => refetch()} />
       </section>
     );
   }
@@ -32,14 +43,10 @@ export function RssPage() {
             <p className="m-0 mt-1 text-[14px] leading-5 text-[#5F5E5B] dark:text-[#E9E9E7]">Manage RSS feeds and regex filters for automatic downloads</p>
           </div>
           <div>
-            <button
-              type="button"
-              onClick={() => setFeedModalOpen(true)}
-              className="flex items-center gap-2 rounded-md bg-[#2383E2] px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-[#1C68B3]"
-            >
-              <Plus size={16} />
+            <Button onClick={() => setFeedModalOpen(true)}>
+              <Plus size={14} />
               Add Feed
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -66,8 +73,48 @@ export function RssPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[12px] text-[#5F5E5B] dark:text-[#A0A0A0]">
-                      {feed.lastPolledAt ? `Last polled: ${new Date(feed.lastPolledAt).toLocaleTimeString()}` : 'Never polled'}
+                      {feed.lastPolledAt ? `Last polled: ${new Date(feed.lastPolledAt).toLocaleString()}` : 'Never polled'}
                     </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={pollFeedMutation.isPending && pollFeedMutation.variables === feed.id}
+                      onClick={async () => {
+                        try {
+                          const result = await pollFeedMutation.mutateAsync(feed.id);
+                          const errorMsg = result.feed.lastError || result.errorMessage;
+                          if (errorMsg) {
+                            toast.error(`Poll failed: ${errorMsg}`);
+                          } else if (result.addedCount > 0) {
+                            toast.success(
+                              `Polled ${feed.name}: queued ${result.addedCount} new torrent${result.addedCount === 1 ? '' : 's'}`
+                            );
+                          } else if (result.itemsScanned === 0) {
+                            toast.info(`Polled ${feed.name}: feed has 0 items`);
+                          } else if (result.matchedCount === 0) {
+                            const sampleHint =
+                              result.sampleTitles.length > 0 ? ` (e.g. "${result.sampleTitles[0]}")` : '';
+                            toast.info(
+                              `Polled ${feed.name}: ${result.itemsScanned} items scanned, 0 matched your filters${sampleHint}`,
+                              { duration: 6000 }
+                            );
+                          } else {
+                            toast.info(
+                              `Polled ${feed.name}: ${result.matchedCount} matched (already added previously)`
+                            );
+                          }
+                        } catch {
+                          toast.error(`Failed to poll ${feed.name}`);
+                        }
+                      }}
+                      title="Poll feed now"
+                    >
+                      <RefreshCw
+                        size={13}
+                        className={pollFeedMutation.isPending && pollFeedMutation.variables === feed.id ? 'animate-spin' : ''}
+                      />
+                      Poll Now
+                    </Button>
                     <button
                       type="button"
                       onClick={() => setDeleteFeedTarget({ id: feed.id, name: feed.name })}
@@ -80,6 +127,14 @@ export function RssPage() {
                 </div>
 
                 <div className="mt-4 border-t border-[#E9E9E7] dark:border-[#333333] pt-4">
+                  {feed.lastError && (
+                    <div className="mb-3 flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400">
+                      <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                      <span>
+                        Last poll failed{feed.lastErrorAt ? ` (${new Date(feed.lastErrorAt).toLocaleString()})` : ''}: {feed.lastError}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7]">Regex Filters</h4>
                     <button

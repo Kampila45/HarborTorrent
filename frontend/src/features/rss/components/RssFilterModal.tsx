@@ -1,8 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { X, Folder } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useRssActions } from '../hooks/useRssActions';
+import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 import { FolderBrowserModal } from '@/features/directories/components/FolderBrowserModal';
+import { settingsApi } from '@/features/settings/api';
 
 interface RssFilterModalProps {
   isOpen: boolean;
@@ -16,15 +19,34 @@ export function RssFilterModal({ isOpen, feedId, onClose }: RssFilterModalProps)
   const [savePath, setSavePath] = useState('');
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
 
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.getSettings,
+    enabled: isOpen,
+  });
+
+  useEffect(() => {
+    if (!isOpen) {
+      setRegexPattern('');
+      setSavePath('');
+      return;
+    }
+
+    if (settings?.defaultDownloadPath) {
+      setSavePath((current) => current || settings.defaultDownloadPath);
+    }
+  }, [isOpen, settings?.defaultDownloadPath]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!regexPattern.trim() || !savePath.trim()) return;
+    const resolvedSavePath = savePath.trim() || settings?.defaultDownloadPath || '';
+    if (!regexPattern.trim() || !resolvedSavePath) return;
 
     try {
-      await addFilterMutation.mutateAsync({ feedId, input: { regexPattern: regexPattern.trim(), savePath: savePath.trim() } });
-      toast.success('Filter added successfully');
+      await addFilterMutation.mutateAsync({ feedId, input: { regexPattern: regexPattern.trim(), savePath: resolvedSavePath } });
+      toast.success('Filter added — polling feed now');
       setRegexPattern('');
       setSavePath('');
       onClose();
@@ -71,36 +93,29 @@ export function RssFilterModal({ isOpen, feedId, onClose }: RssFilterModalProps)
                     type="text"
                     value={savePath}
                     onChange={(e) => setSavePath(e.target.value)}
-                    placeholder="/downloads/tv"
-                    required
+                    placeholder={settings?.defaultDownloadPath || 'Default HarborTorrent folder'}
                     className="flex-1 rounded-md border border-[#E9E9E7] dark:border-[#333333] bg-transparent px-3 py-2 text-[14px] text-[#37352F] dark:text-[#E9E9E7] placeholder:text-[rgba(55,53,47,0.4)] dark:placeholder:text-[rgba(255,255,255,0.2)] focus:border-[#2383E2] focus:outline-none focus:ring-1 focus:ring-[#2383E2]"
                   />
                   <button
                     type="button"
                     onClick={() => setIsBrowserOpen(true)}
                     className="flex shrink-0 items-center justify-center rounded-md border border-[#E9E9E7] dark:border-[#333333] bg-[#F7F7F5] dark:bg-[#1A1A1A] px-3 transition-colors hover:bg-[#E9E9E7] dark:hover:bg-[#222222]"
+                    title="Browse folder"
                   >
                     <Folder size={18} className="text-[#5F5E5B] dark:text-[#E9E9E7]" />
                   </button>
                 </div>
+                <p className="text-[11px] text-[#5F5E5B] dark:text-[#A0A0A0]">Defaults to your HarborTorrent downloads folder. Edit or browse to choose another folder.</p>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md px-4 py-2 text-[14px] font-medium text-[#5F5E5B] dark:text-[#A0A0A0] transition-colors hover:bg-[#F7F7F5] dark:hover:bg-[#222222]"
-              >
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={onClose}>
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={addFilterMutation.isPending || !regexPattern.trim() || !savePath.trim()}
-                className="rounded-md bg-[#2383E2] px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-[#1C68B3] disabled:opacity-50"
-              >
+              </Button>
+              <Button type="submit" disabled={addFilterMutation.isPending || !regexPattern.trim() || (!savePath.trim() && !settings?.defaultDownloadPath)}>
                 {addFilterMutation.isPending ? 'Adding...' : 'Add Filter'}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

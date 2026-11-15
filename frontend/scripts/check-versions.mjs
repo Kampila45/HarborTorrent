@@ -31,15 +31,22 @@ const doc = new DOMParser().parseFromString(csprojContent, 'text/xml');
 const versionNode = doc.getElementsByTagName('Version')[0];
 const csprojVersion = versionNode?.textContent?.trim() ?? null;
 
+// ── 4. Cargo.toml ───────────────────────────────────────────────────────────
+const cargoPath = resolve(root, 'src-tauri/Cargo.toml');
+const cargoContent = readFileSync(cargoPath, 'utf8');
+const cargoMatch = cargoContent.match(/^version\s*=\s*"([^"]+)"/m);
+const cargoVersion = cargoMatch?.[1]?.trim() ?? null;
+
 // ── Report ────────────────────────────────────────────────────────────────────
 console.log(`package.json   : ${packageVersion}`);
 console.log(`tauri.conf.json: ${tauriVersion}`);
+console.log(`Cargo.toml     : ${cargoVersion}`);
 console.log(`HarborTorrent.Api.csproj: ${csprojVersion}`);
 
-const versions = new Set([packageVersion, tauriVersion, csprojVersion]);
+const versions = new Set([packageVersion, tauriVersion, cargoVersion, csprojVersion]);
 
 if (versions.size !== 1) {
-  console.error('\nVersion mismatch detected. All three files must share the same version string.');
+  console.error('\nVersion mismatch detected. All four files must share the same version string.');
   process.exit(1);
 }
 

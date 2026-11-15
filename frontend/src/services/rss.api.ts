@@ -11,6 +11,8 @@ export interface RssFeed {
   name: string;
   url: string;
   lastPolledAt: string | null;
+  lastError?: string | null;
+  lastErrorAt?: string | null;
   isActive: boolean;
   filters: RssFilter[];
 }
@@ -27,6 +29,20 @@ export async function addRssFeed(input: { name: string; url: string }): Promise<
 
 export async function deleteRssFeed(id: string): Promise<void> {
   await httpClient.delete(`/rss/${id}`);
+}
+
+export interface RssPollResult {
+  feed: RssFeed;
+  itemsScanned: number;
+  matchedCount: number;
+  addedCount: number;
+  sampleTitles: string[];
+  errorMessage?: string | null;
+}
+
+export async function pollRssFeed(id: string): Promise<RssPollResult> {
+  const response = await httpClient.post<{ data: RssPollResult }>(`/rss/${id}/poll`);
+  return response.data.data;
 }
 
 export async function addRssFilter(feedId: string, input: { regexPattern: string; savePath: string }): Promise<RssFilter> {

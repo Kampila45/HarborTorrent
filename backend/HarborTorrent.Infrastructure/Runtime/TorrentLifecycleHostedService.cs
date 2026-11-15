@@ -63,7 +63,7 @@ internal sealed class TorrentLifecycleHostedService : BackgroundService
         }
     }
 
-    private async Task AdvanceActiveTorrentsAsync(CancellationToken cancellationToken)
+    internal async Task AdvanceActiveTorrentsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ITorrentRepository>();
@@ -94,6 +94,23 @@ internal sealed class TorrentLifecycleHostedService : BackgroundService
         {
             if (!snapshotsById.TryGetValue(torrent.Id, out var snapshot))
             {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.ErrorMessage))
+            {
+                torrent.Fail(snapshot.ErrorMessage, _timeProvider.GetUtcNow());
+                await eventPublisher.PublishAsync(TorrentEventType.Stopped, torrent.ToDto(), cancellationToken);
+                continue;
+            }
+
+            if (snapshot.Status == TorrentStatus.Stopped)
+            {
+                var stopResult = torrent.Stop(_timeProvider.GetUtcNow());
+                if (stopResult.IsSuccess)
+                {
+                    await eventPublisher.PublishAsync(TorrentEventType.Stopped, torrent.ToDto(), cancellationToken);
+                }
                 continue;
             }
 
@@ -135,7 +152,7 @@ internal sealed class TorrentLifecycleHostedService : BackgroundService
         await repository.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task RestoreActiveTorrentsAsync(CancellationToken cancellationToken)
+    internal async Task RestoreActiveTorrentsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ITorrentRepository>();
@@ -160,13 +177,28 @@ internal sealed class TorrentLifecycleHostedService : BackgroundService
         {
             try
             {
-                await _runtimeCoordinator.StartAsync(torrent.Id, cancellationToken);
+                var startResult = await _runtimeCoordinator.StartAsync(torrent.Id, cancellationToken);
+                if (startResult.IsFailure)
+                {
+                    _logger.LogWarning(
+                        "Failed to restore torrent {TorrentId}: {Errors}",
+                        torrent.Id,
+                        string.Join("; ", startResult.Errors.Select(e => e.Message)));
+                    continue;
+                }
 
                 // Paused torrents must be re-registered with the engine (via StartAsync),
                 // then immediately paused again to restore their intended state.
                 if (torrent.Status == TorrentStatus.Paused)
                 {
-                    await _runtimeCoordinator.PauseAsync(torrent.Id, cancellationToken);
+                    var pauseResult = await _runtimeCoordinator.PauseAsync(torrent.Id, cancellationToken);
+                    if (pauseResult.IsFailure)
+                    {
+                        _logger.LogWarning(
+                            "Failed to pause restored torrent {TorrentId}: {Errors}",
+                            torrent.Id,
+                            string.Join("; ", pauseResult.Errors.Select(e => e.Message)));
+                    }
                 }
             }
             catch (Exception exception)

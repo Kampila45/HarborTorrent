@@ -25,6 +25,32 @@ public sealed class TorrentSource
 
     public string? FileName { get; private set; }
 
+    /// <summary>
+    /// Canonical public UDP and HTTP/HTTPS trackers appended to magnet links when absent.
+    /// </summary>
+    public static readonly IReadOnlyList<string> DefaultTrackers =
+    [
+        "udp://tracker.opentrackr.org:1337/announce",
+        "https://tracker.opentrackr.org:443/announce",
+        "http://tracker.opentrackr.org:1337/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://open.tracker.cl:1337/announce",
+        "udp://tracker.openbittorrent.com:6969/announce",
+        "udp://explodie.org:6969/announce",
+        "udp://open.demonii.com:1337/announce",
+        "udp://exodus.desync.com:6969/announce",
+        "udp://p4p.arenabg.com:1337/announce",
+        "https://tracker.tamersunion.org:443/announce"
+    ];
+
+    public static string BuildMagnetUri(string infoHash, string? displayName)
+    {
+        var resolvedName = string.IsNullOrWhiteSpace(displayName) ? "Unknown" : displayName.Trim();
+        var trackerParams = string.Concat(DefaultTrackers.Select(t => $"&tr={Uri.EscapeDataString(t)}"));
+        return $"magnet:?xt=urn:btih:{infoHash.Trim()}&dn={Uri.EscapeDataString(resolvedName)}{trackerParams}";
+    }
+
     public static Result<TorrentSource> FromMagnetLink(string magnetLink)
     {
         if (string.IsNullOrWhiteSpace(magnetLink))
@@ -34,22 +60,12 @@ public sealed class TorrentSource
 
         var link = magnetLink.Trim();
 
-        // Add reliable public UDP trackers to accelerate metadata resolution for trackerless links
-        var publicTrackers = new[]
-        {
-            "udp://tracker.opentrackr.org:1337/announce",
-            "udp://9.rarbg.com:2810/announce",
-            "udp://tracker.openbittorrent.com:6969/announce",
-            "udp://exodus.desync.com:6969/announce",
-            "udp://tracker.torrent.eu.org:451/announce"
-        };
-
-        foreach (var tracker in publicTrackers)
+        foreach (var tracker in DefaultTrackers)
         {
             var encodedTracker = Uri.EscapeDataString(tracker);
-            // Magnet links can contain trackers as raw strings or url-encoded strings depending on the source. 
+            // Magnet links can contain trackers as raw strings or url-encoded strings depending on the source.
             // Check if the tracker is already present to avoid duplicates.
-            if (!link.Contains(encodedTracker, StringComparison.OrdinalIgnoreCase) && 
+            if (!link.Contains(encodedTracker, StringComparison.OrdinalIgnoreCase) &&
                 !link.Contains($"tr={tracker}", StringComparison.OrdinalIgnoreCase))
             {
                 link += $"&tr={encodedTracker}";

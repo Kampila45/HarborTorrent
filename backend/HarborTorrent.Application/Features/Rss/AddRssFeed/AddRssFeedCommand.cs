@@ -1,5 +1,6 @@
 using FluentValidation;
 using HarborTorrent.Application.Abstractions.Persistence;
+using HarborTorrent.Application.Abstractions.Rss;
 using HarborTorrent.Application.Features.Rss.Shared;
 using HarborTorrent.Domain.Rss;
 using MediatR;
@@ -20,10 +21,12 @@ public class AddRssFeedCommandValidator : AbstractValidator<AddRssFeedCommand>
 public class AddRssFeedCommandHandler : IRequestHandler<AddRssFeedCommand, RssFeedDto>
 {
     private readonly IRssFeedRepository _repository;
+    private readonly IRssFeedPoller? _poller;
 
-    public AddRssFeedCommandHandler(IRssFeedRepository repository)
+    public AddRssFeedCommandHandler(IRssFeedRepository repository, IRssFeedPoller? poller = null)
     {
         _repository = repository;
+        _poller = poller;
     }
 
     public async Task<RssFeedDto> Handle(AddRssFeedCommand request, CancellationToken cancellationToken)
@@ -31,6 +34,8 @@ public class AddRssFeedCommandHandler : IRequestHandler<AddRssFeedCommand, RssFe
         var feed = new RssFeed(Guid.NewGuid(), request.Name, request.Url);
         await _repository.AddAsync(feed, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
+
+        _poller?.EnqueuePoll(feed.Id);
 
         return new RssFeedDto(feed.Id, feed.Name, feed.Url, feed.LastPolledAt, feed.IsActive, Array.Empty<RssFilterDto>());
     }

@@ -1,6 +1,6 @@
 [package]
 name = "harbor-torrent"
-version = "1.0.2"
+version = "1.0.3"
 description = "A local, self-hosted torrent download manager"
 authors = ["you"]
 edition = "2021"

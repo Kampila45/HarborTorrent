@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { useRssActions } from '../hooks/useRssActions';
+import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 
 interface RssFeedModalProps {
@@ -72,21 +73,13 @@ export function RssFeedModal({ isOpen, onClose }: RssFeedModalProps) {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-4 py-2 text-[14px] font-medium text-[#5F5E5B] dark:text-[#A0A0A0] transition-colors hover:bg-[#F7F7F5] dark:hover:bg-[#222222]"
-            >
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={addFeedMutation.isPending || !name.trim() || !url.trim()}
-              className="rounded-md bg-[#2383E2] px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-[#1C68B3] disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={addFeedMutation.isPending || !name.trim() || !url.trim()}>
               {addFeedMutation.isPending ? 'Adding...' : 'Add Feed'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

@@ -20,7 +20,7 @@ import { Toaster } from 'sonner';
 
 export function App() {
   const { theme } = useUiStore();
-  const backendState = useBackendReady();
+  const { state: backendState, errorReason, retry } = useBackendReady();
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -77,7 +77,7 @@ export function App() {
   }, [openAddTorrent]);
 
   if (backendState === 'error') {
-    return <BackendErrorPage />;
+    return <BackendErrorPage errorReason={errorReason} onRetry={retry} />;
   }
 
   if (backendState === 'loading') {

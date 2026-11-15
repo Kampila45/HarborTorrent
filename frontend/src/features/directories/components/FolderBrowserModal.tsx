@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Folder, ChevronLeft, ChevronRight, ArrowUp, Loader2 } from 'lucide-react';
 import { useDirectoriesQuery } from '../hooks/useDirectoriesQuery';
+import { Button } from '@/components/ui/Button';
 
 
 interface FolderBrowserModalProps {
@@ -184,22 +185,13 @@ export function FolderBrowserModal({ isOpen, onClose, onSelect, initialPath }: F
         </div>
 
         {/* Footer */}
-        <div className="border-t border-[#E9E9E7] dark:border-[#333333] bg-[#F7F7F5] dark:bg-[#1A1A1A] px-5 py-4 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[4px] border border-[#DCDAD7] dark:border-[#444444] bg-[#F7F7F5] dark:bg-[#2A2A2A] px-4 py-2 text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7] shadow-sm transition-colors hover:bg-[#EDEDEB] dark:hover:bg-[#333333] active:scale-[0.98]"
-          >
+        <div className="border-t border-[#E9E9E7] dark:border-[#333333] bg-[#F7F7F5] dark:bg-[#1A1A1A] px-5 py-4 flex items-center justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSelect}
-            disabled={!currentPath}
-            className="rounded bg-[#2383E2] px-4 py-2 text-[14px] font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleSelect} disabled={!currentPath}>
             Select this folder
-          </button>
+          </Button>
         </div>
       </div>
     </div>

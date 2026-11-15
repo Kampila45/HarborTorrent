@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using HarborTorrent.Application.Abstractions.Search;
 using HarborTorrent.Application.Contracts.Search;
+using HarborTorrent.Domain.Torrents;
 using Microsoft.Extensions.Logging;
 
 namespace HarborTorrent.Infrastructure.Search;
@@ -58,8 +59,7 @@ internal sealed class YtsSearchProvider : ITorrentSearchProvider
                     if (string.IsNullOrWhiteSpace(torrent.Hash)) continue;
 
                     var qualityTitle = $"{movieTitle} [{torrent.Quality} {torrent.Type}]";
-                    var encodedTrackers = "&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A80&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Fglotorrents.pw%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce";
-                    var magnetUri = $"magnet:?xt=urn:btih:{torrent.Hash}&dn={Uri.EscapeDataString(qualityTitle)}{encodedTrackers}";
+                    var magnetUri = TorrentSource.BuildMagnetUri(torrent.Hash, qualityTitle);
 
                     results.Add(new SearchResultDto(
                         Title: qualityTitle,

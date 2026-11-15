@@ -1,8 +1,37 @@
-import { useRef } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Check, Copy, RefreshCw } from 'lucide-react';
 
-export function BackendErrorPage() {
+interface BackendErrorPageProps {
+  errorReason?: string | null;
+  onRetry?: () => void;
+}
+
+export function BackendErrorPage({ errorReason, onRetry }: BackendErrorPageProps) {
   const imgRef = useRef<HTMLImageElement>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
+
+  const handleCopyDiagnostics = async () => {
+    try {
+      const lines: string[] = [
+        `Reason: ${errorReason ?? 'Unknown backend startup failure'}`,
+        `UserAgent: ${navigator.userAgent}`,
+      ];
+      if ('__TAURI_INTERNALS__' in window) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const logs = await invoke<string[]>('get_sidecar_diagnostics');
+        if (logs.length > 0) {
+          lines.push('--- Sidecar Logs ---', ...logs);
+        }
+      }
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopiedDiagnostics(true);
+      window.setTimeout(() => setCopiedDiagnostics(false), 2500);
+    } catch {
+      // Ignore clipboard failures in restricted contexts
+    }
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
     if (!imgRef.current) return;
@@ -16,8 +45,28 @@ export function BackendErrorPage() {
     imgRef.current.style.transform = `rotateY(0deg) rotateX(0deg) translateY(0)`;
   };
 
+  const handleRestart = async () => {
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      if ('__TAURI_INTERNALS__' in window) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('restart_api_sidecar');
+      }
+
+      if (onRetry) {
+        onRetry();
+      } else {
+        window.location.reload();
+      }
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : String(err));
+      setRestarting(false);
+    }
+  };
+
   return (
-    <section 
+    <section
       className="flex min-h-0 flex-1 flex-col items-center justify-center relative overflow-hidden bg-[#fef9ef] dark:bg-[var(--bg-primary)]"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
@@ -51,11 +100,11 @@ export function BackendErrorPage() {
           <div className="relative group perspective-1000">
             {/* Glow effect */}
             <div className="absolute inset-0 bg-[#93000a]/10 rounded-full blur-3xl scale-125 group-hover:scale-150 transition-transform duration-700"></div>
-            <img 
+            <img
               ref={imgRef}
               className="relative w-72 h-72 md:w-96 md:h-96 object-contain transform group-hover:translate-y-[-10px] transition-transform duration-500 ease-out"
               src="/engine-failure-illustration.png"
-              style={{ filter: 'drop-shadow(0 20px 30px rgba(0,0,0,0.08))' }} 
+              style={{ filter: 'drop-shadow(0 20px 30px rgba(0,0,0,0.08))' }}
               alt="Backend Error Anchor"
             />
           </div>
@@ -66,22 +115,33 @@ export function BackendErrorPage() {
           <h2 className="text-[24px] leading-[32px] tracking-[-0.02em] font-semibold text-[#D4403A]">Engine Failure</h2>
           <h3 className="text-[18px] leading-[24px] tracking-[-0.01em] font-semibold text-[#1d1c16] dark:text-[#E9E9E7]">The harbor engine room is unresponsive</h3>
           <p className="text-[15px] leading-[24px] font-normal text-[#5F5E5B] dark:text-[#E9E9E7] max-w-md mx-auto">
-            The background engine did not respond in time. This usually happens if another HarborTorrent instance is already running or a system component was blocked.
+            {errorReason ?? 'The background engine did not respond in time. This usually happens if another HarborTorrent instance is already running or a system component was blocked.'}
           </p>
+          {restartError && (
+            <p className="text-[13px] text-[#D4403A] max-w-md mx-auto">{restartError}</p>
+          )}
         </div>
 
         {/* Actions */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
             type="button"
-            className="w-full sm:w-auto px-6 py-3 border border-transparent bg-[#37352F] dark:bg-[#E9E9E7] text-white dark:text-[#111111] rounded-lg font-medium text-[12px] flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 transition-all"
-            onClick={() => window.location.reload()}
+            disabled={restarting}
+            className="w-full sm:w-auto px-6 py-3 border border-transparent bg-[#37352F] dark:bg-[#E9E9E7] text-white dark:text-[#111111] rounded-lg font-medium text-[12px] flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-60"
+            onClick={handleRestart}
           >
-            <RefreshCw size={18} />
-            Try starting again
+            <RefreshCw size={18} className={restarting ? 'animate-spin' : ''} />
+            {restarting ? 'Restarting engine…' : 'Try starting again'}
+          </button>
+          <button
+            type="button"
+            className="w-full sm:w-auto px-5 py-3 border border-[rgba(55,53,47,0.2)] dark:border-[#444444] bg-white dark:bg-[#1A1A1A] text-[#37352F] dark:text-[#E9E9E7] rounded-lg font-medium text-[12px] flex items-center justify-center gap-2 hover:bg-[#F7F7F5] dark:hover:bg-[#252525] transition-all"
+            onClick={handleCopyDiagnostics}
+          >
+            {copiedDiagnostics ? <Check size={16} className="text-[#0B6E4F]" /> : <Copy size={16} />}
+            {copiedDiagnostics ? 'Diagnostics copied' : 'Copy diagnostics'}
           </button>
         </div>
-
       </div>
     </section>
   );

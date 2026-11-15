@@ -2,6 +2,7 @@ import { Pause, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { Pagination } from '@/components/Pagination';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { useTorrentsQuery } from '@/features/torrents/hooks/useTorrentsQuery';
@@ -36,7 +37,7 @@ export function DownloadsPage() {
   const statusFilter = searchParams.get('status') ?? 'all';
   const searchQuery = searchParams.get('q') ?? '';
 
-  const { data, isLoading, isError } = useTorrentsQuery({
+  const { data, isLoading, isError, refetch } = useTorrentsQuery({
     page,
     pageSize: 10,
     status: statusFilter,
@@ -49,20 +50,31 @@ export function DownloadsPage() {
     refetchInterval: 1000,
   });
 
-  const { pauseMutation, removeMutation, startMutation } = useTorrentActions();
+  const { pauseMutation, removeMutation, startMutation, isDeleting } = useTorrentActions();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const handleDeleteClick = (id: string, name: string) => setDeleteTarget({ id, name });
+  const handleDeleteClick = (id: string, name: string) => {
+    if (isDeleting(id)) return;
+    setDeleteTarget({ id, name });
+  };
   const handleDeleteConfirm = () => {
     if (deleteTarget) removeMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
   };
   const handleDeleteCancel = () => setDeleteTarget(null);
 
-  if (isLoading || isError || !data) {
+  if (isLoading) {
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6">
         <PageSkeleton />
+      </section>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState message="Failed to load torrents" onRetry={() => refetch()} />
       </section>
     );
   }
@@ -167,9 +179,14 @@ export function DownloadsPage() {
                           {isDownloading ? <Pause size={16} /> : <Play size={16} />}
                         </button>
                       )}
-                      <button type="button" className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] hover:text-[#D4403A]"
-                        onClick={() => handleDeleteClick(item.id, item.name)} aria-label="Remove">
-                        <Trash2 size={16} />
+                      <button
+                        type="button"
+                        disabled={isDeleting(item.id)}
+                        className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] hover:text-[#D4403A] disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={() => handleDeleteClick(item.id, item.name)}
+                        aria-label={isDeleting(item.id) ? 'Removing' : 'Remove'}
+                      >
+                        <Trash2 size={16} className={isDeleting(item.id) ? 'animate-pulse' : ''} />
                       </button>
                     </div>
                   </div>
@@ -247,11 +264,12 @@ export function DownloadsPage() {
                           )}
                           <button
                             type="button"
-                            className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-white dark:bg-[#111111] hover:text-[#D4403A]"
+                            disabled={isDeleting(item.id)}
+                            className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-white dark:bg-[#111111] hover:text-[#D4403A] disabled:opacity-40 disabled:cursor-not-allowed"
                             onClick={() => handleDeleteClick(item.id, item.name)}
-                            aria-label="Remove torrent"
+                            aria-label={isDeleting(item.id) ? 'Removing torrent' : 'Remove torrent'}
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={18} className={isDeleting(item.id) ? 'animate-pulse' : ''} />
                           </button>
                         </div>
                       </td>

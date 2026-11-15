@@ -22,6 +22,7 @@ internal sealed class GetDashboardMetricsQueryHandler : IRequestHandler<GetDashb
 
         return new DashboardMetricsDto
         {
+            TotalTorrents = torrents.Count,
             ActiveDownloads = torrents.Count(t => t.Status == TorrentStatus.Downloading || t.Status == TorrentStatus.Seeding),
             CompletedTorrents = torrents.Count(t => t.Progress >= 100m),
             TotalDownloadedBytes = torrents.Sum(t => t.DownloadedBytes),

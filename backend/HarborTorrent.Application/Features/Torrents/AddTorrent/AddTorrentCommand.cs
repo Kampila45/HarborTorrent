@@ -24,6 +24,7 @@ internal sealed class AddTorrentCommandHandler : IRequestHandler<AddTorrentComma
     private const string LocalUserId = "local";
 
     private readonly ITorrentRepository _torrentRepository;
+    private readonly ISettingsRepository _settingsRepository;
     private readonly ITorrentEventPublisher _eventPublisher;
     private readonly ITorrentSourceMetadataProvider _torrentSourceMetadataProvider;
     private readonly TimeProvider _timeProvider;
@@ -31,12 +32,14 @@ internal sealed class AddTorrentCommandHandler : IRequestHandler<AddTorrentComma
 
     public AddTorrentCommandHandler(
         ITorrentRepository torrentRepository,
+        ISettingsRepository settingsRepository,
         ITorrentEventPublisher eventPublisher,
         ITorrentSourceMetadataProvider torrentSourceMetadataProvider,
         TimeProvider timeProvider,
         IConfiguration configuration)
     {
         _torrentRepository = torrentRepository;
+        _settingsRepository = settingsRepository;
         _eventPublisher = eventPublisher;
         _torrentSourceMetadataProvider = torrentSourceMetadataProvider;
         _timeProvider = timeProvider;
@@ -66,10 +69,19 @@ internal sealed class AddTorrentCommandHandler : IRequestHandler<AddTorrentComma
             return Result<TorrentDto>.Failure(Error.Conflict($"Torrent '{sourceResult.Value!.GetDisplayName()}' is already registered."));
         }
 
-        // Use the provided save path, or fall back to the configured default
-        var savePath = !string.IsNullOrWhiteSpace(request.SavePath)
-            ? request.SavePath
-            : _configuration["DefaultSavePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "HarborDownloads");
+        // Use the provided save path, or fall back to the saved default download folder
+        string savePath;
+        if (!string.IsNullOrWhiteSpace(request.SavePath))
+        {
+            savePath = request.SavePath;
+        }
+        else
+        {
+            var settings = await _settingsRepository.GetAsync(cancellationToken);
+            savePath = !string.IsNullOrWhiteSpace(settings.DefaultDownloadPath)
+                ? settings.DefaultDownloadPath
+                : _configuration["DefaultSavePath"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "HarborDownloads");
+        }
 
         var torrentResult = Torrent.Create(
             metadataResult.Value!.InfoHash,

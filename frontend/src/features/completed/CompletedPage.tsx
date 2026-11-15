@@ -5,6 +5,7 @@ import { useTorrentsQuery } from '@/features/torrents/hooks/useTorrentsQuery';
 import { useTorrentActions } from '@/features/torrents/hooks/useTorrentActions';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { Pagination } from '@/components/Pagination';
 import { TorrentStatusBadge } from '@/features/torrents/components/TorrentStatusBadge';
 import { formatBytes, formatSpeed, toDisplayTorrentStatus } from '@/utils/formatters';
@@ -13,24 +14,35 @@ export function CompletedPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = parseInt(searchParams.get('page') || '1', 10);
 
-  const { data, isLoading, isError } = useTorrentsQuery({
+  const { data, isLoading, isError, refetch } = useTorrentsQuery({
     page,
     pageSize: 10,
     status: 'Completed'
   });
 
-  const { pauseMutation, removeMutation, startMutation } = useTorrentActions();
+  const { pauseMutation, removeMutation, startMutation, isDeleting } = useTorrentActions();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const handleDeleteClick = (id: string, name: string) => setDeleteTarget({ id, name });
+  const handleDeleteClick = (id: string, name: string) => {
+    if (isDeleting(id)) return;
+    setDeleteTarget({ id, name });
+  };
   const handleDeleteConfirm = () => {
     if (deleteTarget) removeMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
   };
   const handleDeleteCancel = () => setDeleteTarget(null);
 
-  if (isLoading || isError || !data) {
+  if (isLoading) {
     return <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6"><PageSkeleton /></section>;
+  }
+
+  if (isError || !data) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState message="Failed to load completed torrents" onRetry={() => refetch()} />
+      </section>
+    );
   }
 
   const completedTorrents = data.items;
@@ -92,11 +104,12 @@ export function CompletedPage() {
                       </button>
                       <button
                         type="button"
-                        className="rounded p-1 text-[rgba(55,53,47,0.65)] dark:text-[#E9E9E7] transition-colors hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[#111111] hover:text-[#D4403A]"
+                        disabled={isDeleting(item.id)}
+                        className="rounded p-1 text-[rgba(55,53,47,0.65)] dark:text-[#E9E9E7] transition-colors hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[#111111] hover:text-[#D4403A] disabled:opacity-40 disabled:cursor-not-allowed"
                         onClick={() => handleDeleteClick(item.id, item.name)}
-                        aria-label="Remove torrent"
+                        aria-label={isDeleting(item.id) ? 'Removing torrent' : 'Remove torrent'}
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={18} className={isDeleting(item.id) ? 'animate-pulse' : ''} />
                       </button>
                     </div>
                   </td>

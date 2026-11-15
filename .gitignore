@@ -328,3 +328,9 @@ nCrunchTemp_*
 # AppSettings — secrets must never be committed
 backend/HarborTorrent.Api/appsettings.json
 backend/HarborTorrent.Api/appsettings.*.json
+
+# Local runtime data
+backend/HarborTorrent.Api/HarborTorrent/
+*.db-shm
+*.db-wal
+harbor.lock

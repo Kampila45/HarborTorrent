@@ -35,9 +35,10 @@ HarborTorrent follows **Clean Architecture** with **CQRS** (via MediatR) in the 
 backend/
 ├── HarborTorrent.Domain          # Entities, value objects — no dependencies
 ├── HarborTorrent.Application     # Use cases (Commands, Queries, Handlers) — depends on Domain
-├── HarborTorrent.Infrastructure  # MonoTorrent, SignalR, search providers — depends on Application
+├── HarborTorrent.Infrastructure  # MonoTorrent, SignalR hubs, RSS polling, search providers — depends on Application
 ├── HarborTorrent.Persistence     # EF Core, SQLite — depends on Application
-└── HarborTorrent.Api             # Minimal API endpoints, middleware — depends on all layers
+├── HarborTorrent.Api             # Minimal API endpoints, middleware, stream tokens — depends on all layers
+└── HarborTorrent.Tests           # xUnit tests — depends on Api & Application
 ```
 
 The frontend is feature-driven:
@@ -92,7 +93,9 @@ Please follow these rules to keep the codebase consistent.
 
 - Keep pull requests focused on a single concern. Avoid mixing unrelated changes.
 - All `.NET` code must build without errors or warnings: `dotnet build`.
+- All `.NET` tests must pass: `dotnet test backend/HarborTorrent.slnx`.
 - All TypeScript code must type-check: `npx tsc --noEmit`.
+- Add or update tests in `backend/HarborTorrent.Tests` for behaviour changes where practical.
 - Update `backend/CHANGELOG.md` with a user-facing description of the change.
 - If you are adding a new endpoint, add it to the Scalar/Swagger explorer.
 - Do not commit secrets, tokens, or private keys.
