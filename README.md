@@ -147,10 +147,10 @@ cd frontend
 npm run tauri dev
 ```
 
-> In local development the backend runs on port 5000 and CORS allows all Vite dev-server origins.
-> The launch token is not enforced when `HARBOR_LAUNCH_TOKEN` is absent from the environment.
+> In local development the backend falls back to port `5000` (override with `HARBOR_API_PORT`) and CORS permits the Vite dev-server origins (`localhost:5173`, `localhost:1420`) alongside the packaged WebView origins.
+> When `HARBOR_LAUNCH_TOKEN` is absent the backend only falls back to a dev token in the `Development` environment — packaged/`Production` builds fail closed and refuse to start.
 
-### Linting and type-checking
+### Linting, type-checking and tests
 
 ```bash
 cd frontend
@@ -160,6 +160,7 @@ npx tsc --noEmit
 ```bash
 cd backend
 dotnet build
+dotnet test HarborTorrent.slnx
 ```
 
 ---
@@ -187,8 +188,8 @@ npm run tauri build
 The CI release workflow runs automatically when a version tag is pushed:
 
 ```bash
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
 ---

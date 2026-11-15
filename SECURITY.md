@@ -15,14 +15,17 @@ Only the latest release receives security fixes. Older versions are not maintain
 HarborTorrent is a local desktop application. Its security model assumes the following:
 
 - The `.NET` API binds exclusively to the loopback interface (`127.0.0.1`) and is **not reachable from the network**.
-- Every HTTP request and SignalR connection must present a per-session **launch token**, generated at startup and valid only for the lifetime of that process.
-- Torrent metadata is rendered inside the WebView. Maliciously crafted torrent names or descriptions could attempt content injection. A `Content-Security-Policy` header restricts script execution to the local API origin.
+- Every HTTP request and SignalR connection must present a per-session **launch token**, generated at startup and valid only for the lifetime of that process. In packaged (`Production`) builds a missing token is a fatal startup error — the API fails closed rather than falling back to a shared development token.
+- The WebView enforces a strict `Content-Security-Policy` (declared in `tauri.conf.json` and reinforced by a `SecurityHeadersMiddleware` response header), restricting script execution and network origins to the local API.
+- Media streaming uses short-lived, HMAC-signed **stream tokens** scoped to a single torrent and file index, so a `<video>` URL never exposes the launch token.
+- File downloads are validated for **containment** against the requesting torrent's own download directory, preventing path traversal outside the torrent's folder.
+- A single-instance lock prevents a second copy of the API from running against the same data directory.
 
 Potential risk areas include:
 
 - A process running as the same OS user could call the local API if it observes the token from the process environment.
 - Torrent file content is not scanned for malware — HarborTorrent downloads files as directed by the torrent metadata.
-- Saved file paths are constructed from torrent metadata and are not sanitised beyond what MonoTorrent provides.
+- Saved file paths are derived from torrent metadata. Downloads are contained to the torrent's own directory, but file content is not otherwise sanitised or scanned.
 
 ---
 

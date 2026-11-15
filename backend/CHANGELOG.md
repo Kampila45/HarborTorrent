@@ -1,5 +1,11 @@
 # HarborTorrent Changelog
 
+## v1.0.3
+- **Rock-Solid Reliability**: Downloads now pick up exactly where they left off after a restart — including upload totals and seed ratios — and pausing, stopping, or a crash shows up instantly and accurately.
+- **Locked-Down Engine**: Your local app is now authenticated end-to-end. Streaming a video uses a short-lived, single-file key, and files can only ever be opened from inside their own download folder.
+- **Smarter Updates**: Check for updates on demand, with clear progress and error messages and properly signed release packages.
+- **Tidier Automation & UI**: RSS feeds handle tricky patterns gracefully and show any errors, the live connection tells you when it drops and reconnects, and every screen now offers a retry when something goes wrong.
+
 ## v1.0.2
 - **Sleek New Look**: We've updated the typography across the entire app using the crisp and readable *Inter* font, giving HarborTorrent a truly premium, cohesive feel.
 - **Beautiful Error Pages**: Running into connection issues is never fun, but if something goes wrong, you'll now be greeted by our gorgeous new "Engine Failure" illustrations with interactive 3D effects instead of a generic error screen.

@@ -33,7 +33,7 @@ If applicable, add screenshots or a short screen recording to help explain the p
 
 | Field | Value |
 |-------|-------|
-| HarborTorrent version | e.g. v1.0.1 |
+| HarborTorrent version | e.g. v1.0.3 |
 | Operating System | e.g. Windows 11 x64, Fedora 40 x64 |
 | Package type | e.g. `.msi`, `.deb`, `.rpm`, `.AppImage` |
 
