@@ -2,6 +2,7 @@ namespace HarborTorrent.Application.Contracts.Dashboard;
 
 public class DashboardMetricsDto
 {
+    public int TotalTorrents { get; init; }
     public int ActiveDownloads { get; init; }
     public int CompletedTorrents { get; init; }
     public long TotalDownloadedBytes { get; init; }

@@ -4,11 +4,24 @@ import { unwrapApiResponse } from '@/services/apiResponse';
 
 export type CreateTorrentInput = {
   name?: string;
-  savePath: string;
+  savePath?: string;
   magnetLink?: string;
   torrentFileName?: string;
   torrentFileContentBase64?: string;
 };
+
+export type StreamTokenResponse = {
+  token: string;
+  expiresAtUtc: string;
+};
+
+export async function fetchStreamToken(torrentId: string, fileIndex: number): Promise<StreamTokenResponse> {
+  const response = await httpClient.post<ApiResponse<StreamTokenResponse>>('/files/stream-token', {
+    torrentId,
+    fileIndex,
+  });
+  return unwrapApiResponse(response.data);
+}
 
 export type FetchTorrentsParams = {
   page?: number;

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchTorrentTrackers, addTracker } from '@/services/torrents.api';
 import { Plus } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
+import { Button } from '@/components/ui/Button';
 
 type TorrentTrackersTabProps = {
   torrentId: string;
@@ -54,14 +55,13 @@ export function TorrentTrackersTab({ torrentId }: TorrentTrackersTabProps) {
             disabled={isPending}
             required
           />
-          <button
+          <Button
             type="submit"
             disabled={isPending || !newTrackerUrl.trim()}
-            className="flex items-center gap-1 rounded bg-[#2563eb] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1d4ed8] disabled:opacity-50"
           >
-            <Plus size={16} />
+            <Plus size={14} />
             Add Tracker
-          </button>
+          </Button>
         </form>
       </div>
 

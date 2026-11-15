@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle2, List, Pause, PauseCircle, Play, PlayCircle, 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { useDashboardData } from '@/features/torrents/hooks/useDashboardData';
 import { useTorrentActions } from '@/features/torrents/hooks/useTorrentActions';
@@ -15,22 +16,33 @@ const getTransferIcon = (status: string) => {
 };
 
 export function DashboardPage() {
-  const { data, isLoading, isError } = useDashboardData();
-  const { pauseMutation, removeMutation, startMutation } = useTorrentActions();
+  const { data, isLoading, isError, refetch } = useDashboardData();
+  const { pauseMutation, removeMutation, startMutation, isDeleting } = useTorrentActions();
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const handleDeleteClick = (id: string, name: string) => setDeleteTarget({ id, name });
+  const handleDeleteClick = (id: string, name: string) => {
+    if (isDeleting(id)) return;
+    setDeleteTarget({ id, name });
+  };
   const handleDeleteConfirm = () => {
     if (deleteTarget) removeMutation.mutate(deleteTarget.id);
     setDeleteTarget(null);
   };
   const handleDeleteCancel = () => setDeleteTarget(null);
 
-  if (isLoading || isError || !data) {
+  if (isLoading) {
     return (
       <main className="mx-auto min-h-screen max-w-5xl bg-white dark:bg-[#111111] px-6 pb-10 pt-10">
         <PageSkeleton />
       </main>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState message="Failed to load dashboard data" onRetry={() => refetch()} />
+      </section>
     );
   }
 
@@ -75,7 +87,7 @@ export function DashboardPage() {
                   ? 'Completed'
                   : status === 'Error'
                     ? 'Error'
-                    : `${progress}% • ${formatBytes(torrent.downloadedBytes)} / ${formatBytes(Math.max(torrent.downloadedBytes, Math.round((torrent.downloadedBytes / Math.max(progress, 1)) * 100)))} • ${formatDuration(torrent.etaSeconds)} left`;
+                    : `${progress}% • ${formatBytes(torrent.downloadedBytes)}${torrent.progress > 0 ? ` / ${formatBytes(Math.max(torrent.downloadedBytes, Math.round((torrent.downloadedBytes / torrent.progress) * 100)))}` : ''} • ${formatDuration(torrent.etaSeconds)} left`;
 
             const speed = status === 'Seeding' ? formatSpeed(torrent.uploadSpeedBytesPerSecond) : isDownloading ? formatSpeed(torrent.downloadSpeedBytesPerSecond) : formatSpeed(torrent.uploadSpeedBytesPerSecond);
             const speedClass = isDownloading ? 'text-[#2383E2]' : 'text-[#5F5E5B] dark:text-[#E9E9E7]';
@@ -104,7 +116,15 @@ export function DashboardPage() {
                   <span className={`font-mono text-[12px] ${speedClass}`}>{speed}</span>
                   <div className="inline-flex items-center justify-end gap-1">
                     {status === 'Error' ? (
-                      <button type="button" className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-white dark:bg-[#111111]" aria-label="Retry torrent">
+                      <button
+                        type="button"
+                        className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-white dark:bg-[#111111]"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          startMutation.mutate(torrent.id);
+                        }}
+                        aria-label="Retry torrent"
+                      >
                         <RefreshCw size={18} />
                       </button>
                     ) : (
@@ -120,11 +140,12 @@ export function DashboardPage() {
 
                     <button
                       type="button"
-                      className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[#111111] hover:text-[#D4403A]"
+                      disabled={isDeleting(torrent.id)}
+                      className="rounded p-1 text-[#5F5E5B] dark:text-[#E9E9E7] transition-colors hover:bg-[rgba(55,53,47,0.08)] dark:hover:bg-[#111111] hover:text-[#D4403A] disabled:opacity-40 disabled:cursor-not-allowed"
                       onClick={(e) => { e.preventDefault(); handleDeleteClick(torrent.id, torrent.name); }}
-                      aria-label="Remove torrent"
+                      aria-label={isDeleting(torrent.id) ? 'Removing torrent' : 'Remove torrent'}
                     >
-                      <Trash2 size={18} />
+                      <Trash2 size={18} className={isDeleting(torrent.id) ? 'animate-pulse' : ''} />
                     </button>
                   </div>
                 </div>

@@ -1,13 +1,49 @@
 import { useEffect, useState } from 'react';
-import { Save, AlertCircle, DownloadCloud, CheckCircle, RotateCcw } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Save, AlertCircle, DownloadCloud, CheckCircle, RotateCcw, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { settingsApi, type SettingsDto } from './api';
+import { Button } from '@/components/ui/Button';
+import { PageErrorState } from '@/components/ui/PageErrorState';
 import { FolderBrowserModal } from '@/features/directories/components/FolderBrowserModal';
 import { systemApi } from '@/features/system/api';
 import { useSystemStore } from '@/store/systemStore';
-import { triggerManualUpdate } from '@/features/system/hooks/useSystemUpdater';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { checkForUpdates, triggerManualUpdate } from '@/features/system/hooks/useSystemUpdater';
 import packageJson from '../../../package.json';
+
+const INLINE_TOKEN_REGEX = /(\*\*.*?\*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
+const MARKDOWN_LINK_REGEX = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/;
+
+const renderInlineMarkdown = (text: string) => {
+  const parts = text.split(INLINE_TOKEN_REGEX);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <span key={i} className="font-semibold text-[#37352F] dark:text-[#E9E9E7]">
+          {part.slice(2, -2)}
+        </span>
+      );
+    }
+
+    const linkMatch = part.match(MARKDOWN_LINK_REGEX);
+    if (linkMatch) {
+      const [, label, href] = linkMatch;
+      return (
+        <a
+          key={i}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#2383E2] underline hover:opacity-80"
+        >
+          {label}
+        </a>
+      );
+    }
+
+    return <span key={i}>{part}</span>;
+  });
+};
 
 const renderMarkdown = (text: string) => {
   return text.split('\n').map((line, index) => {
@@ -19,51 +55,60 @@ const renderMarkdown = (text: string) => {
     }
     if (line.startsWith('- ')) {
       const content = line.replace('- ', '');
-      const parts = content.split(/(\*\*.*?\*\*)/g);
       return (
         <li key={index} className="ml-5 mb-2 list-disc text-[14px] text-[#4B4A47] dark:text-[#D4D4D4]">
-          {parts.map((part, i) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-              return <span key={i} className="font-semibold text-[#37352F] dark:text-[#E9E9E7]">{part.slice(2, -2)}</span>;
-            }
-            return <span key={i}>{part}</span>;
-          })}
+          {renderInlineMarkdown(content)}
         </li>
       );
     }
     if (line.trim() === '') {
       return <div key={index} className="h-1"></div>;
     }
-    return <p key={index} className="mb-2 text-[14px] text-[#4B4A47] dark:text-[#D4D4D4]">{line}</p>;
+    return <p key={index} className="mb-2 text-[14px] text-[#4B4A47] dark:text-[#D4D4D4]">{renderInlineMarkdown(line)}</p>;
   });
 };
 
+const MAX_KBPS = Math.floor(2_147_483_647 / 1024);
+
 export function SettingsPage() {
+  const queryClient = useQueryClient();
   const [settings, setSettings] = useState<SettingsDto | null>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'storage' | 'bandwidth' | 'anchor' | 'network' | 'about'>('storage');
 
   // System Update State
-  const { isUpdating, updateProgress, updateComplete, setIsUpdating, setUpdateProgress, setUpdateComplete } = useSystemStore();
+  const {
+    isUpdating,
+    updateProgress,
+    updateComplete,
+    updateError,
+    setIsUpdating,
+    setUpdateProgress,
+    setUpdateComplete,
+    setUpdateError,
+  } = useSystemStore();
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [availableVersion, setAvailableVersion] = useState<string | null>(null);
+  const [updateCheckStatus, setUpdateCheckStatus] = useState<string | null>(null);
 
   // Convert UI input bytes to KB/s for clarity.
   const [maxDownloadKbps, setMaxDownloadKbps] = useState<string>('');
   const [maxUploadKbps, setMaxUploadKbps] = useState<string>('');
   const [anchorMaxDownloadKbps, setAnchorMaxDownloadKbps] = useState<string>('');
   const [anchorMaxUploadKbps, setAnchorMaxUploadKbps] = useState<string>('');
-  
-  const { data: serverSettings, isLoading } = useQuery({ 
-    queryKey: ['settings'], 
-    queryFn: settingsApi.getSettings 
+
+  const { data: serverSettings, isLoading, isError: isSettingsError, refetch: refetchSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.getSettings,
   });
 
-  const { data: versionInfo } = useQuery({ 
-    queryKey: ['system-version'], 
+  const { data: versionInfo } = useQuery({
+    queryKey: ['system-version'],
     queryFn: async () => {
-      let tauriVersion = packageJson.version || '1.0.1';
+      let tauriVersion = packageJson.version || '1.0.3';
       try {
         if ('__TAURI_INTERNALS__' in window) {
           const { getVersion } = await import('@tauri-apps/api/app');
@@ -72,64 +117,111 @@ export function SettingsPage() {
       } catch (e) {
         console.warn('Could not read Tauri app version', e);
       }
-      
+
       const apiVersion = await systemApi.getVersion();
       return {
         ...apiVersion,
-        version: tauriVersion
+        version: tauriVersion,
       };
-    } 
+    },
   });
 
-  const { data: changelog } = useQuery({ 
-    queryKey: ['system-changelog'], 
-    queryFn: systemApi.getChangelog 
+  const {
+    data: changelog,
+    isLoading: isChangelogLoading,
+    isError: isChangelogError,
+    refetch: refetchChangelog,
+  } = useQuery({
+    queryKey: ['system-changelog'],
+    queryFn: systemApi.getChangelog,
   });
 
   useEffect(() => {
-    if (serverSettings && !saving) {
+    // Initialize form fields from server settings once so background refetches or
+    // failed saves never overwrite unsaved user edits.
+    if (serverSettings && !hasInitialized) {
       setSettings(serverSettings);
       setMaxDownloadKbps(serverSettings.maxDownloadSpeedBytes > 0 ? Math.round(serverSettings.maxDownloadSpeedBytes / 1024).toString() : '0');
       setMaxUploadKbps(serverSettings.maxUploadSpeedBytes > 0 ? Math.round(serverSettings.maxUploadSpeedBytes / 1024).toString() : '0');
       setAnchorMaxDownloadKbps(serverSettings.anchorMaxDownloadSpeedBytes > 0 ? Math.round(serverSettings.anchorMaxDownloadSpeedBytes / 1024).toString() : '0');
       setAnchorMaxUploadKbps(serverSettings.anchorMaxUploadSpeedBytes > 0 ? Math.round(serverSettings.anchorMaxUploadSpeedBytes / 1024).toString() : '0');
       setError(null);
+      setHasInitialized(true);
     }
-  }, [serverSettings, saving]);
+  }, [serverSettings, hasInitialized]);
+
+  useEffect(() => {
+    // Keep header Anchor toggle synchronized without clobbering unsaved form inputs.
+    if (serverSettings && hasInitialized) {
+      setSettings((current) =>
+        current && current.anchorModeEnabled !== serverSettings.anchorModeEnabled
+          ? { ...current, anchorModeEnabled: serverSettings.anchorModeEnabled }
+          : current
+      );
+    }
+  }, [serverSettings?.anchorModeEnabled, hasInitialized]);
 
   const handleSave = async () => {
     if (!settings) return;
 
+    if (!settings.defaultDownloadPath.trim()) {
+      const msg = 'Default download path is required.';
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const downloadSpeed = Number(maxDownloadKbps.trim() || '0');
+    const uploadSpeed = Number(maxUploadKbps.trim() || '0');
+    const anchorDownloadSpeed = Number(anchorMaxDownloadKbps.trim() || '0');
+    const anchorUploadSpeed = Number(anchorMaxUploadKbps.trim() || '0');
+
+    const speeds = [downloadSpeed, uploadSpeed, anchorDownloadSpeed, anchorUploadSpeed];
+    if (speeds.some((s) => !Number.isFinite(s) || s < 0 || s > MAX_KBPS)) {
+      const msg = `Speed limits must be between 0 and ${MAX_KBPS.toLocaleString()} KB/s.`;
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    const normalizedDownloadKbps = Math.round(downloadSpeed);
+    const normalizedUploadKbps = Math.round(uploadSpeed);
+    const normalizedAnchorDownloadKbps = Math.round(anchorDownloadSpeed);
+    const normalizedAnchorUploadKbps = Math.round(anchorUploadSpeed);
+
     setSaving(true);
     setError(null);
 
-    const downloadSpeed = parseInt(maxDownloadKbps, 10);
-    const uploadSpeed = parseInt(maxUploadKbps, 10);
-    const anchorDownloadSpeed = parseInt(anchorMaxDownloadKbps, 10);
-    const anchorUploadSpeed = parseInt(anchorMaxUploadKbps, 10);
-
     const payload: SettingsDto = {
       ...settings,
-      maxDownloadSpeedBytes: isNaN(downloadSpeed) || downloadSpeed <= 0 ? 0 : downloadSpeed * 1024,
-      maxUploadSpeedBytes: isNaN(uploadSpeed) || uploadSpeed <= 0 ? 0 : uploadSpeed * 1024,
-      anchorMaxDownloadSpeedBytes: isNaN(anchorDownloadSpeed) || anchorDownloadSpeed <= 0 ? 0 : anchorDownloadSpeed * 1024,
-      anchorMaxUploadSpeedBytes: isNaN(anchorUploadSpeed) || anchorUploadSpeed <= 0 ? 0 : anchorUploadSpeed * 1024,
+      defaultDownloadPath: settings.defaultDownloadPath.trim(),
+      maxDownloadSpeedBytes: normalizedDownloadKbps * 1024,
+      maxUploadSpeedBytes: normalizedUploadKbps * 1024,
+      anchorMaxDownloadSpeedBytes: normalizedAnchorDownloadKbps * 1024,
+      anchorMaxUploadSpeedBytes: normalizedAnchorUploadKbps * 1024,
     };
 
     try {
       await settingsApi.updateSettings(payload);
       setSettings(payload);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
+      setMaxDownloadKbps(String(normalizedDownloadKbps));
+      setMaxUploadKbps(String(normalizedUploadKbps));
+      setAnchorMaxDownloadKbps(String(normalizedAnchorDownloadKbps));
+      setAnchorMaxUploadKbps(String(normalizedAnchorUploadKbps));
+      queryClient.setQueryData(['settings'], payload);
+      await queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Settings saved successfully.');
+    } catch (err: any) {
       console.error('Failed to save settings:', err);
-      setError('Failed to save settings. Please try again.');
+      const msg = err?.message || 'Failed to save settings. Please try again.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  if (isLoading) {
+  if (isLoading || (!isSettingsError && !settings)) {
     return (
       <div className="flex h-[calc(100vh-3rem)] items-center justify-center">
         <div className="text-[14px] text-[#73726F]">Loading settings...</div>
@@ -137,13 +229,11 @@ export function SettingsPage() {
     );
   }
 
-  if (!settings) {
+  if (isSettingsError || !settings) {
     return (
-      <div className="p-6 md:p-8">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-900/30 dark:bg-red-900/10">
-          <p className="flex items-center gap-2 font-medium"><AlertCircle size={18} /> {error}</p>
-        </div>
-      </div>
+      <section className="flex min-h-0 flex-1 flex-col">
+        <PageErrorState message={error || 'Failed to load settings.'} onRetry={() => refetchSettings()} />
+      </section>
     );
   }
 
@@ -156,22 +246,11 @@ export function SettingsPage() {
             Configure global application preferences and network limits.
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 rounded bg-[#2383E2] px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-[#1a73cc] disabled:opacity-50"
-        >
-          <Save size={16} />
+        <Button onClick={handleSave} disabled={saving}>
+          <Save size={14} />
           {saving ? 'Saving...' : 'Save Changes'}
-        </button>
+        </Button>
       </div>
-
-      {saveSuccess && (
-        <div className="mb-6 rounded border border-green-200 bg-green-50 p-3 text-[14px] text-green-700 dark:border-green-900/30 dark:bg-green-900/10 dark:text-green-400 flex items-center gap-2">
-          <CheckCircle size={16} />
-          Settings saved successfully.
-        </div>
-      )}
 
       {error && (
         <div className="mb-6 rounded border border-red-200 bg-red-50 p-3 text-[14px] text-red-600 dark:border-red-900/30 dark:bg-red-900/10 flex items-center gap-2">
@@ -429,23 +508,66 @@ export function SettingsPage() {
               </p>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7]">
                 Current Version: <span className="text-[#2383E2]">{versionInfo?.version || 'Loading...'}</span>
               </span>
-              {versionInfo?.version !== versionInfo?.latestVersion && !isUpdating && !updateComplete && (
+              {!isUpdating && !updateComplete && (
                 <button
+                  type="button"
+                  disabled={checkingUpdates}
                   onClick={async () => {
-                    await triggerManualUpdate(setIsUpdating, setUpdateProgress, setUpdateComplete);
+                    setCheckingUpdates(true);
+                    setUpdateCheckStatus(null);
+                    setUpdateError(null);
+                    try {
+                      const result = await checkForUpdates();
+                      if (result.available && result.version) {
+                        setAvailableVersion(result.version);
+                        setUpdateCheckStatus(`Version ${result.version} is available.`);
+                      } else {
+                        setAvailableVersion(null);
+                        setUpdateCheckStatus('You are up to date.');
+                      }
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : 'Unable to check for updates.';
+                      setUpdateCheckStatus(null);
+                      setUpdateError(msg);
+                    } finally {
+                      setCheckingUpdates(false);
+                    }
                   }}
-                  className="flex items-center gap-2 rounded-md border border-[#EDEDEB] dark:border-[#444444] bg-[#F7F7F5] dark:bg-[#2A2A2A] px-4 py-2 text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7] shadow-sm transition-colors hover:bg-[#E1E1E1] dark:hover:bg-[#333333] active:scale-[0.98]"
+                  className="flex items-center gap-2 rounded-md border border-[#EDEDEB] dark:border-[#444444] bg-[#F7F7F5] dark:bg-[#2A2A2A] px-3 py-2 text-[13px] font-medium text-[#37352F] dark:text-[#E9E9E7] shadow-sm transition-colors hover:bg-[#E1E1E1] dark:hover:bg-[#333333] disabled:opacity-50"
+                >
+                  <RefreshCw size={15} className={checkingUpdates ? 'animate-spin' : ''} />
+                  {checkingUpdates ? 'Checking...' : 'Check for updates'}
+                </button>
+              )}
+              {availableVersion && !isUpdating && !updateComplete && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await triggerManualUpdate(setIsUpdating, setUpdateProgress, setUpdateComplete, setUpdateError);
+                  }}
+                  className="flex items-center gap-2 rounded-md bg-[#2383E2] px-4 py-2 text-[14px] font-medium text-white shadow-sm transition-colors hover:bg-[#1a73cc] active:scale-[0.98]"
                 >
                   <DownloadCloud size={16} />
-                  Update to v{versionInfo?.latestVersion}
+                  Update to v{availableVersion}
                 </button>
               )}
             </div>
           </div>
+
+          {updateCheckStatus && !updateError && (
+            <p className="text-[13px] text-[#5F5E5B] dark:text-[#C4C4C4]">{updateCheckStatus}</p>
+          )}
+
+          {updateError && (
+            <div className="rounded border border-red-200 bg-red-50 p-3 text-[13px] text-red-600 dark:border-red-900/30 dark:bg-red-900/10 flex items-center gap-2">
+              <AlertCircle size={16} />
+              <span>{updateError}</span>
+            </div>
+          )}
 
           {/* Update Progress UI */}
           {isUpdating && !updateComplete && (
@@ -473,7 +595,14 @@ export function SettingsPage() {
                   <span className="text-[14px] font-semibold">Update successfully installed!</span>
                 </div>
                 <button
-                  onClick={() => relaunch()}
+                  onClick={async () => {
+                    if ('__TAURI_INTERNALS__' in window) {
+                      const { relaunch } = await import('@tauri-apps/plugin-process');
+                      await relaunch();
+                    } else {
+                      window.location.reload();
+                    }
+                  }}
                   className="flex items-center gap-2 rounded-md border border-[#EDEDEB] dark:border-[#444444] bg-[#F7F7F5] dark:bg-[#2A2A2A] px-4 py-2 text-[14px] font-medium text-[#37352F] dark:text-[#E9E9E7] shadow-sm transition-colors hover:bg-[#E1E1E1] dark:hover:bg-[#333333] active:scale-[0.98]"
                 >
                   <RotateCcw size={16} />
@@ -490,9 +619,20 @@ export function SettingsPage() {
             </div>
 
             <div className="p-6 max-h-[500px] overflow-y-auto custom-scrollbar">
-              {changelog === undefined ? (
+              {isChangelogLoading ? (
                 <span className="text-[14px] text-gray-500">Loading changelog...</span>
-              ) : changelog === '' ? (
+              ) : isChangelogError ? (
+                <div className="flex items-center justify-between gap-4 text-[14px] text-[#D4403A]">
+                  <span className="flex items-center gap-2">
+                    <AlertCircle size={16} />
+                    Failed to load changelog.
+                  </span>
+                  <Button variant="outline" size="xs" onClick={() => refetchChangelog()}>
+                    <RefreshCw size={13} />
+                    Retry
+                  </Button>
+                </div>
+              ) : !changelog ? (
                 <span className="text-[14px] text-[#73726F] dark:text-[#C4C4C4]">
                   Changelog is not available in this build.
                 </span>
